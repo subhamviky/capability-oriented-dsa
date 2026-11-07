@@ -1,0 +1,27 @@
+name: Bug report
+description: A kernel, validator or governed operation behaves incorrectly
+labels: [bug]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest state + call that shows the problem.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Edition
+      options: [installed package, standalone file, both]
+  - type: input
+    id: version
+    attributes:
+      label: Version (capability_oriented_dsa.__version__) and Python version

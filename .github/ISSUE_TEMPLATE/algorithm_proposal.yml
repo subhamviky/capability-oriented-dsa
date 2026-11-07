@@ -1,0 +1,21 @@
+name: Algorithm or capability proposal
+description: Propose a new kernel, operation or capability
+labels: [enhancement]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Operation name and capability (e.g. GRAPH / PATH / A_STAR)
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Descriptor
+      description: Complexity, preconditions, postconditions, mutates state?, stable?, required inputs.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: New configuration keys, if any
