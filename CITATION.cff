@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: If you reference this work, please cite it as below.
+title: "Capability-Oriented DSA"
+type: software
+authors:
+  - family-names: Gupta
+    given-names: Subham
+repository-code: "https://github.com/subhamviky/capability-oriented-dsa"
+license: MIT
+version: 0.1.0
