@@ -1,0 +1,4 @@
+* text=auto eol=lf
+standalone/dsa_framework.py linguist-generated=true
+*.docx binary
+*.png binary
