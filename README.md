@@ -128,7 +128,7 @@ pip install "git+https://github.com/subhamviky/capability-oriented-dsa@v0.1.0"
 ```
 
 Or copy **`standalone/dsa_framework.py`**, a generated single-file edition with
-the same API that is also attached to every release. Don't import both
+the same API that is also attached to each release. Don't import both
 editions in one process: their classes and config registries are distinct
 objects.
 
@@ -169,7 +169,7 @@ pattern near a production system.
 - `ruff` lint and format, and `mypy --strict`, all clean
 - The test suite runs against **both** editions: unit, Hypothesis property tests (sorts, searches, AVL insert/delete, trie, graph traversals), governed-lifecycle tests, hardening tests for deep inputs, malformed structures and edge cases, and the enterprise examples
 - Iterative kernels verified at 3,000-deep inputs (above CPython's recursion limit)
-- CI on Python 3.11 to 3.13 (Linux) plus Windows and macOS, with a coverage gate, a standalone-freshness check and a wheel install check
+- CI on Python 3.11 to 3.13 (Linux), with a coverage gate, a standalone-freshness check and a wheel install check
 
 ## Documentation
 
