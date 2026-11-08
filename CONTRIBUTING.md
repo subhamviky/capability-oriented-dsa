@@ -40,6 +40,6 @@ CI runs the same commands and fails if `standalone/dsa_framework.py` is stale.
 
 1. Move `Unreleased` entries under a new `## [X.Y.Z] - YYYY-MM-DD` heading.
 2. Bump `version` in `pyproject.toml`, `__version__` in `src/capability_oriented_dsa/__init__.py` and `CITATION.cff`, then run `python tools/build_standalone.py`.
-3. Commit, then `git tag -a vX.Y.Z -m "vX.Y.Z" && git push --follow-tags`. Creating the release from the GitHub web UI ("Draft a new release", new tag on publish) works too.
-4. `release.yml` verifies the tag matches the version, tests, builds, and publishes a GitHub Release with the wheel, sdist and standalone file, or attaches them to a release that already exists.
-5. Optional PyPI: create a PyPI project with a *trusted publisher* for this repository and workflow, add a `pypi` environment in repo settings, and uncomment the `pypi` job.
+3. Commit and push to `main`, then wait for CI to pass.
+4. On GitHub: Releases → "Draft a new release" → create tag `vX.Y.Z` on `main`, paste the matching `CHANGELOG.md` section as the notes, and attach `standalone/dsa_framework.py` (and, if wanted, the wheel and sdist from `python -m build`).
+5. Optional PyPI: publish with `python -m build` and `twine upload dist/*`.
