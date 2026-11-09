@@ -16,7 +16,7 @@ them would force the package to stay a single module.
 `tools/build_standalone.py` concatenates the modules in dependency order,
 removes intra-package imports, merges stdlib imports, rejects module-level
 name collisions, and appends `__all__` and `__version__`. The generated file
-is committed so it can be copied straight from GitHub. It is also attached to each GitHub Release by hand.
+is committed so it can be copied straight from GitHub.
 
 ## Consequences
 
