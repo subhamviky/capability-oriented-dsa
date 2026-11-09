@@ -190,7 +190,7 @@ pattern near a production system.
 | [docs/architecture.md](docs/architecture.md) | Layers, lifecycle, result semantics, capability matrix, extension guide |
 | [docs/configuration.md](docs/configuration.md) | Every config key, its default, allowed values and cost |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [CHANGELOG.md](CHANGELOG.md) | Change history |
 
 ## Lineage
 
