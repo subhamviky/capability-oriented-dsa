@@ -133,11 +133,11 @@ DSAFacade().describe("GRAPH", "PATH", "DIJKSTRA")
 Requires Python 3.11+. No runtime dependencies.
 
 ```bash
-pip install "git+https://github.com/subhamviky/capability-oriented-dsa@v0.1.0"
+pip install "git+https://github.com/subhamviky/capability-oriented-dsa"
 ```
 
 Or copy **`standalone/dsa_framework.py`**, a generated single-file edition with
-the same API that is also attached to each release. Don't import both
+the same API that is also available at standalone/dsa_framework.py. Don't import both
 editions in one process: their classes and config registries are distinct
 objects.
 
