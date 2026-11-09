@@ -16,6 +16,7 @@ from ..core.utilities import KeyResolver
 from ..structures.states import (
     BSTState,
     GraphState,
+    HeapState,
     LinkedListState,
     QueueState,
     SequenceState,
@@ -23,6 +24,7 @@ from ..structures.states import (
     TreeState,
     TrieNode,
     TrieState,
+    UnionFindState,
 )
 
 S_contra = TypeVar("S_contra", contravariant=True)
@@ -244,6 +246,53 @@ class GraphValidator:
         return _finish_validation(v, raise_on_error)
 
 
+class HeapValidator:
+    def validate(self, state: HeapState[Any], *, raise_on_error: bool = False) -> ValidationReport:
+        v: list[str] = []
+        values = state.values
+        for child in range(1, len(values)):
+            parent = (child - 1) // 2
+            out_of_order = (
+                values[child] > values[parent] if state.max_heap else values[child] < values[parent]
+            )
+            if out_of_order:
+                v.append(f"heap order violated at index {child}")
+        return _finish_validation(v, raise_on_error)
+
+
+class UnionFindValidator:
+    def validate(self, state: UnionFindState, *, raise_on_error: bool = False) -> ValidationReport:
+        v: list[str] = []
+        parent = state.parent
+        for element, up in parent.items():
+            if up not in parent:
+                v.append(f"parent of {element!r} is not an element")
+        roots: dict[Any, int] = {}
+        if not v:
+            for element in parent:
+                seen: set[Any] = set()
+                current = element
+                while parent[current] != current and current not in seen:
+                    seen.add(current)
+                    current = parent[current]
+                if parent[current] != current:
+                    v.append(f"cycle reached from {element!r}")
+                    break
+                roots[current] = roots.get(current, 0) + 1
+        if not v:
+            if set(state.size) != set(roots):
+                v.append("size must be recorded for exactly the roots")
+            else:
+                v.extend(
+                    f"size of root {r!r} is {state.size[r]}, expected {n}"
+                    for r, n in roots.items()
+                    if state.size[r] != n
+                )
+            if state.components != len(roots):
+                v.append(f"components is {state.components}, expected {len(roots)}")
+        return _finish_validation(v, raise_on_error)
+
+
 def validator_for(structure_type: str, key: Callable[[Any], Any] | None = None) -> Any:
     """Validator for a structure; BST ordering honours the caller's key function."""
     if structure_type == "BST":
@@ -260,4 +309,6 @@ VALIDATORS: dict[str, Any] = {
     "BST": BSTValidator(),
     "TRIE": TrieValidator(),
     "GRAPH": GraphValidator(),
+    "HEAP": HeapValidator(),
+    "UNION_FIND": UnionFindValidator(),
 }

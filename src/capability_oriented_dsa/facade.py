@@ -7,7 +7,9 @@ from enum import Enum
 from typing import Any
 
 from .capabilities.base import BaseDSACapability
+from .capabilities.enumeration import EnumerationService
 from .capabilities.mutation import MutationService
+from .capabilities.optimization import OptimizationService
 from .capabilities.ordering import OrderingService
 from .capabilities.path import PathService
 from .capabilities.query import QueryService
@@ -105,6 +107,8 @@ def build_default_registry() -> CapabilityRegistry:
         QueryService(),
         MutationService(),
         ValidationService(),
+        OptimizationService(),
+        EnumerationService(),
     ):
         registry.register_service(service)
     return registry

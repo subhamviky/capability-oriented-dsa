@@ -31,6 +31,9 @@ Register extension keys with `register_config_key(ConfigKey(...))`; re-registeri
 | `stable_sort_required` | `DSA_STABLE_SORT_REQUIRED` | `False` | — | — | ORDERING | Reject sort algorithms whose descriptor is not stable. |
 | `dijkstra_negative_weight_policy` | `DSA_DIJKSTRA_NEGATIVE_WEIGHT_POLICY` | `'eager'` | `assume_non_negative`, `eager`, `lazy` | — | PATH DIJKSTRA | 'eager' scans all edges first; 'lazy' checks inspected edges and disables early exit; 'assume_non_negative' skips checks. |
 | `bst_balance_policy` | `DSA_BST_BALANCE_POLICY` | `'unbalanced'` | `avl`, `unbalanced` | — | BST MUTATION | 'avl' rebalances after insert/delete; 'unbalanced' does not. |
+| `dp_max_cells` | `DSA_DP_MAX_CELLS` | `5000000` | — | — | OPTIMIZATION (table-based dynamic programming) | Refuse inputs whose DP table would exceed this many cells; -1 means unbounded. |
+| `enumeration_limit` | `DSA_ENUMERATION_LIMIT` | `1000` | — | — | ENUMERATION | Return at most this many solutions and flag the result truncated; -1 means unbounded. |
+| `enumeration_max_nodes` | `DSA_ENUMERATION_MAX_NODES` | `1000000` | — | — | ENUMERATION | Fail with CAPACITY_EXCEEDED once the search has visited this many states; -1 means unbounded. |
 
 ## Cost notes
 
@@ -38,6 +41,7 @@ Register extension keys with `register_config_key(ConfigKey(...))`; re-registeri
 - `verify_invariants=True` runs the full structural validator before the operation and again after a mutation (O(n) each), and takes a rollback snapshot. Use it in tests and at trust boundaries, not in hot loops.
 - `rollback_on_failure` only costs anything for operations whose descriptor sets `atomic=False`, or when `verify_invariants` is on. Built-in mutations are atomic.
 - `idempotency_max_entries` bounds memory: each recorded entry keeps its result and a reference to the state it was applied to, so a large state stays alive until its entry is evicted.
+- `dp_max_cells`, `enumeration_limit` and `enumeration_max_nodes` bound the derived approaches. A table or search that would exceed them fails (or, for `enumeration_limit`, truncates and says so) instead of allocating without limit.
 - `copy_on_read` deep-copies results that alias internal state (`PEEK`, `READ`, `MIDDLE`, BST `LOOKUP`).
 
 _This table is generated from `DSA_CONFIG`; `tests/test_registry_and_docs.py` fails if a registered key is missing here._

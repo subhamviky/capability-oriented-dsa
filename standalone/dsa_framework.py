@@ -20,13 +20,13 @@ import os
 import threading
 import time
 import uuid
-from collections import OrderedDict, deque
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections import Counter, OrderedDict, deque
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from itertools import pairwise, starmap
 from types import MappingProxyType
-from typing import Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
+from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast, runtime_checkable
 
 __version__ = '0.1.0'
 
@@ -341,6 +341,30 @@ DSA_CONFIG: dict[str, ConfigKey] = {
             "BST MUTATION",
             "'avl' rebalances after insert/delete; 'unbalanced' does not.",
             choices={"unbalanced", "avl"},
+        ),
+        _ck(
+            "dp_max_cells",
+            5_000_000,
+            _to_int,
+            "Derived",
+            "OPTIMIZATION (table-based dynamic programming)",
+            "Refuse inputs whose DP table would exceed this many cells; -1 means unbounded.",
+        ),
+        _ck(
+            "enumeration_limit",
+            1000,
+            _to_int,
+            "Derived",
+            "ENUMERATION",
+            "Return at most this many solutions and flag the result truncated; -1 means unbounded.",
+        ),
+        _ck(
+            "enumeration_max_nodes",
+            1_000_000,
+            _to_int,
+            "Derived",
+            "ENUMERATION",
+            "Fail with CAPACITY_EXCEEDED once the search has visited this many states; -1 means unbounded.",
         ),
     ]
 }
@@ -787,6 +811,8 @@ class StructureType(str, Enum):
     BST = "BST"
     TRIE = "TRIE"
     GRAPH = "GRAPH"
+    HEAP = "HEAP"
+    UNION_FIND = "UNION_FIND"
 
 
 class CapabilityName(str, Enum):
@@ -797,6 +823,8 @@ class CapabilityName(str, Enum):
     QUERY = "QUERY"
     MUTATION = "MUTATION"
     VALIDATION = "VALIDATION"
+    OPTIMIZATION = "OPTIMIZATION"
+    ENUMERATION = "ENUMERATION"
 
 
 @dataclass(slots=True)
@@ -875,6 +903,27 @@ class GraphState(Generic[T]):
     directed: bool = False
 
 
+@dataclass(slots=True)
+class HeapState(Generic[T]):
+    """Binary heap in array form. ``values[0]`` is the minimum (or maximum if ``max_heap``).
+
+    Order is by the values themselves; to order by a priority, store
+    ``(priority, item)`` tuples.
+    """
+
+    values: list[T] = field(default_factory=list)
+    max_heap: bool = False
+
+
+@dataclass(slots=True)
+class UnionFindState:
+    """Disjoint sets: ``parent`` links each element towards its root; ``size`` is kept for roots."""
+
+    parent: dict[Any, Any] = field(default_factory=dict)
+    size: dict[Any, int] = field(default_factory=dict)
+    components: int = 0
+
+
 #: The state contract each structure type must satisfy at the governed boundary.
 STATE_TYPES: dict[str, type[Any]] = {
     StructureType.SEQUENCE.value: SequenceState,
@@ -885,6 +934,8 @@ STATE_TYPES: dict[str, type[Any]] = {
     StructureType.BST.value: BSTState,
     StructureType.TRIE.value: TrieState,
     StructureType.GRAPH.value: GraphState,
+    StructureType.HEAP.value: HeapState,
+    StructureType.UNION_FIND.value: UnionFindState,
 }
 
 
@@ -1395,6 +1446,53 @@ class GraphValidator:
         return _finish_validation(v, raise_on_error)
 
 
+class HeapValidator:
+    def validate(self, state: HeapState[Any], *, raise_on_error: bool = False) -> ValidationReport:
+        v: list[str] = []
+        values = state.values
+        for child in range(1, len(values)):
+            parent = (child - 1) // 2
+            out_of_order = (
+                values[child] > values[parent] if state.max_heap else values[child] < values[parent]
+            )
+            if out_of_order:
+                v.append(f"heap order violated at index {child}")
+        return _finish_validation(v, raise_on_error)
+
+
+class UnionFindValidator:
+    def validate(self, state: UnionFindState, *, raise_on_error: bool = False) -> ValidationReport:
+        v: list[str] = []
+        parent = state.parent
+        for element, up in parent.items():
+            if up not in parent:
+                v.append(f"parent of {element!r} is not an element")
+        roots: dict[Any, int] = {}
+        if not v:
+            for element in parent:
+                seen: set[Any] = set()
+                current = element
+                while parent[current] != current and current not in seen:
+                    seen.add(current)
+                    current = parent[current]
+                if parent[current] != current:
+                    v.append(f"cycle reached from {element!r}")
+                    break
+                roots[current] = roots.get(current, 0) + 1
+        if not v:
+            if set(state.size) != set(roots):
+                v.append("size must be recorded for exactly the roots")
+            else:
+                v.extend(
+                    f"size of root {r!r} is {state.size[r]}, expected {n}"
+                    for r, n in roots.items()
+                    if state.size[r] != n
+                )
+            if state.components != len(roots):
+                v.append(f"components is {state.components}, expected {len(roots)}")
+        return _finish_validation(v, raise_on_error)
+
+
 def validator_for(structure_type: str, key: Callable[[Any], Any] | None = None) -> Any:
     """Validator for a structure; BST ordering honours the caller's key function."""
     if structure_type == "BST":
@@ -1411,6 +1509,8 @@ VALIDATORS: dict[str, Any] = {
     "BST": BSTValidator(),
     "TRIE": TrieValidator(),
     "GRAPH": GraphValidator(),
+    "HEAP": HeapValidator(),
+    "UNION_FIND": UnionFindValidator(),
 }
 
 
@@ -1489,6 +1589,30 @@ class SearchAlgorithms:
             else:
                 right = middle
         return left
+
+    @staticmethod
+    def first_true(
+        values: Sequence[T],
+        predicate: Callable[[T], bool],
+        *,
+        metrics: MetricsState | None = None,
+    ) -> int:
+        """Index of the first value satisfying a *monotone* predicate (False... then True...).
+
+        Returns ``len(values)`` if none does. This is lower bound over an answer
+        space: "the smallest capacity/speed/size that works".
+        """
+        m = metrics or MetricsState()
+        low, high = 0, len(values)
+        while low < high:
+            mid = (low + high) // 2
+            m.iterations += 1
+            m.comparisons += 1
+            if predicate(values[mid]):
+                high = mid
+            else:
+                low = mid + 1
+        return low
 
     @staticmethod
     def is_sorted(values: Sequence[T], *, key: Callable[[T], Any] | None = None) -> bool:
@@ -2461,6 +2585,523 @@ class GraphAlgorithms:
 
 
 # ============================================================================
+# algorithms/heaps.py
+# ============================================================================
+class HeapAlgorithms:
+    @staticmethod
+    def _before(left: Any, right: Any, max_heap: bool) -> bool:
+        """True if ``left`` must sit above ``right``."""
+        return bool(left > right) if max_heap else bool(left < right)
+
+    @staticmethod
+    def push(state: HeapState[Any], value: Any) -> None:
+        values = state.values
+        values.append(value)
+        child = len(values) - 1
+        while child > 0:
+            parent = (child - 1) // 2
+            if not HeapAlgorithms._before(values[child], values[parent], state.max_heap):
+                break
+            values[child], values[parent] = values[parent], values[child]
+            child = parent
+
+    @staticmethod
+    def peek(state: HeapState[Any]) -> Any:
+        if not state.values:
+            raise InvalidInputError("heap is empty")
+        return state.values[0]
+
+    @staticmethod
+    def pop(state: HeapState[Any]) -> Any:
+        """Remove and return the top element."""
+        values = state.values
+        if not values:
+            raise InvalidInputError("heap is empty")
+        top = values[0]
+        last = values.pop()
+        if values:
+            values[0] = last
+            HeapAlgorithms._sift_down(values, 0, state.max_heap)
+        return top
+
+    @staticmethod
+    def _sift_down(values: list[Any], index: int, max_heap: bool) -> None:
+        size = len(values)
+        while True:
+            best = index
+            for child in (2 * index + 1, 2 * index + 2):
+                if child < size and HeapAlgorithms._before(values[child], values[best], max_heap):
+                    best = child
+            if best == index:
+                return
+            values[index], values[best] = values[best], values[index]
+            index = best
+
+    @staticmethod
+    def heapify(values: Sequence[Any], *, max_heap: bool = False) -> HeapState[Any]:
+        """Build a heap bottom-up in O(n)."""
+        state: HeapState[Any] = HeapState(list(values), max_heap)
+        for index in range(len(state.values) // 2 - 1, -1, -1):
+            HeapAlgorithms._sift_down(state.values, index, max_heap)
+        return state
+
+    @staticmethod
+    def top_k(values: Sequence[Any], k: int, *, largest: bool = True) -> list[Any]:
+        """The ``k`` largest (or smallest) values, best first, using a heap of size ``k``."""
+        if k < 0:
+            raise InvalidInputError("k must be non-negative")
+        if k == 0:
+            return []
+        kept: HeapState[Any] = HeapState(max_heap=not largest)
+        for value in values:
+            if len(kept.values) < k:
+                HeapAlgorithms.push(kept, value)
+            elif HeapAlgorithms._before(value, kept.values[0], largest):
+                HeapAlgorithms.pop(kept)
+                HeapAlgorithms.push(kept, value)
+        return sorted(kept.values, reverse=largest)
+
+    @staticmethod
+    def merge_sorted(lists: Sequence[Sequence[Any]]) -> list[Any]:
+        """k-way merge of individually sorted lists in O(N log k)."""
+        for index, items in enumerate(lists):
+            if any(items[i] > items[i + 1] for i in range(len(items) - 1)):
+                raise AlgorithmPreconditionError(f"list {index} is not sorted")
+        frontier: HeapState[tuple[Any, int, int]] = HeapState()
+        for index, items in enumerate(lists):
+            if items:
+                HeapAlgorithms.push(frontier, (items[0], index, 0))
+        merged: list[Any] = []
+        while frontier.values:
+            value, index, position = HeapAlgorithms.pop(frontier)
+            merged.append(value)
+            if position + 1 < len(lists[index]):
+                HeapAlgorithms.push(frontier, (lists[index][position + 1], index, position + 1))
+        return merged
+
+
+# ============================================================================
+# algorithms/union_find.py
+# ============================================================================
+class UnionFindAlgorithms:
+    @staticmethod
+    def make_set(state: UnionFindState, element: Any) -> bool:
+        """Add ``element`` as its own set. Returns False if it already exists."""
+        if element in state.parent:
+            return False
+        state.parent[element] = element
+        state.size[element] = 1
+        state.components += 1
+        return True
+
+    @staticmethod
+    def find(state: UnionFindState, element: Any, *, compress: bool = True) -> Any:
+        """Root of ``element``'s set; iterative. ``compress=False`` leaves the state untouched."""
+        if element not in state.parent:
+            raise NotFoundError(f"unknown element: {element!r}")
+        root = element
+        while state.parent[root] != root:
+            root = state.parent[root]
+        if compress:
+            while state.parent[element] != root:
+                state.parent[element], element = root, state.parent[element]
+        return root
+
+    @staticmethod
+    def union(state: UnionFindState, left: Any, right: Any) -> bool:
+        """Merge two sets. Returns False if they were already one set."""
+        a = UnionFindAlgorithms.find(state, left)
+        b = UnionFindAlgorithms.find(state, right)
+        if a == b:
+            return False
+        if state.size[a] < state.size[b]:
+            a, b = b, a
+        state.parent[b] = a
+        state.size[a] += state.size.pop(b)
+        state.components -= 1
+        return True
+
+    @staticmethod
+    def connected(state: UnionFindState, left: Any, right: Any, *, compress: bool = True) -> bool:
+        return bool(
+            UnionFindAlgorithms.find(state, left, compress=compress)
+            == UnionFindAlgorithms.find(state, right, compress=compress)
+        )
+
+
+# ============================================================================
+# algorithms/hashing.py
+# ============================================================================
+class HashingAlgorithms:
+    @staticmethod
+    def has_duplicate(values: Sequence[Hashable]) -> bool:
+        seen: set[Hashable] = set()
+        for value in values:
+            if value in seen:
+                return True
+            seen.add(value)
+        return False
+
+    @staticmethod
+    def frequency(values: Sequence[Hashable]) -> dict[Hashable, int]:
+        """Counts in first-seen order."""
+        return dict(Counter(values))
+
+    @staticmethod
+    def group_anagrams(words: Sequence[str]) -> list[list[str]]:
+        """Group words made of the same letters; groups and members in first-seen order."""
+        groups: dict[tuple[str, ...], list[str]] = {}
+        for word in words:
+            groups.setdefault(tuple(sorted(word)), []).append(word)
+        return list(groups.values())
+
+    @staticmethod
+    def longest_consecutive(values: Sequence[int]) -> int:
+        """Length of the longest run of consecutive integers, in O(n) without sorting."""
+        members = set(values)
+        best = 0
+        for value in members:
+            if value - 1 not in members:
+                end = value
+                while end + 1 in members:
+                    end += 1
+                best = max(best, end - value + 1)
+        return best
+
+    @staticmethod
+    def subarray_sum_count(values: Sequence[int], target: int) -> int:
+        """Number of contiguous subarrays summing to ``target`` (prefix sums + hash map)."""
+        seen: dict[int, int] = {0: 1}
+        running = count = 0
+        for value in values:
+            running += value
+            count += seen.get(running - target, 0)
+            seen[running] = seen.get(running, 0) + 1
+        return count
+
+    @staticmethod
+    def first_unique(values: Sequence[Any]) -> int | None:
+        """Index of the first value that occurs exactly once."""
+        counts = Counter(values)
+        for index, value in enumerate(values):
+            if counts[value] == 1:
+                return index
+        return None
+
+
+# ============================================================================
+# algorithms/windows.py
+# ============================================================================
+class WindowAlgorithms:
+    @staticmethod
+    def pair_sum_sorted(values: Sequence[int], target: int) -> tuple[int, int] | None:
+        """Indexes of two entries summing to ``target`` in a sorted sequence; O(n), O(1) space."""
+        low, high = 0, len(values) - 1
+        while low < high:
+            total = values[low] + values[high]
+            if total == target:
+                return low, high
+            if total < target:
+                low += 1
+            else:
+                high -= 1
+        return None
+
+    @staticmethod
+    def longest_unique_window(values: Sequence[Hashable]) -> int:
+        """Length of the longest window with no repeated value (variable window + last-seen map)."""
+        last_seen: dict[Hashable, int] = {}
+        start = best = 0
+        for index, value in enumerate(values):
+            if last_seen.get(value, -1) >= start:
+                start = last_seen[value] + 1
+            last_seen[value] = index
+            best = max(best, index - start + 1)
+        return best
+
+    @staticmethod
+    def min_subarray_length(values: Sequence[int], target: int) -> int:
+        """Shortest contiguous subarray with sum >= ``target``; 0 if none. Needs non-negative values."""
+        if any(value < 0 for value in values):
+            raise InvalidInputError("values must be non-negative")
+        best = len(values) + 1
+        start = total = 0
+        for end, value in enumerate(values):
+            total += value
+            while total >= target and start <= end:
+                best = min(best, end - start + 1)
+                total -= values[start]
+                start += 1
+        return 0 if best == len(values) + 1 else best
+
+    @staticmethod
+    def max_area(heights: Sequence[int]) -> int:
+        """Largest water area between two bars (container problem); O(n) two pointers."""
+        if any(h < 0 for h in heights):
+            raise InvalidInputError("heights must be non-negative")
+        low, high, best = 0, len(heights) - 1, 0
+        while low < high:
+            best = max(best, (high - low) * min(heights[low], heights[high]))
+            if heights[low] < heights[high]:
+                low += 1
+            else:
+                high -= 1
+        return best
+
+
+# ============================================================================
+# algorithms/dynamic.py
+# ============================================================================
+def _require_cells(cells: int, max_cells: int | None) -> None:
+    if max_cells is not None and max_cells >= 0 and cells > max_cells:
+        raise InvalidInputError(f"table needs {cells} cells, over the limit of {max_cells}")
+
+
+class DynamicProgrammingAlgorithms:
+    @staticmethod
+    def house_robber(values: Sequence[int]) -> int:
+        """Maximum sum of non-adjacent elements (skipping is always allowed)."""
+        take = skip = 0
+        for value in values:
+            take, skip = skip + value, max(take, skip)
+        return max(take, skip)
+
+    @staticmethod
+    def longest_increasing_subsequence(values: Sequence[Any]) -> int:
+        """Length of the longest strictly increasing subsequence in O(n log n).
+
+        ``tails[i]`` is the smallest tail of an increasing subsequence of length ``i + 1``;
+        it stays sorted, so the position for each value is a core ``lower_bound``.
+        """
+        tails: list[Any] = []
+        for value in values:
+            position = SearchAlgorithms.lower_bound(tails, value)
+            if position == len(tails):
+                tails.append(value)
+            else:
+                tails[position] = value
+        return len(tails)
+
+    @staticmethod
+    def coin_change(coins: Sequence[int], amount: int, *, max_cells: int | None = None) -> int | None:
+        """Fewest coins (unlimited supply) making ``amount``; None if impossible."""
+        if amount < 0 or any(coin <= 0 for coin in coins):
+            raise InvalidInputError("amount must be >= 0 and coins positive")
+        _require_cells((amount + 1) * max(len(coins), 1), max_cells)
+        unreachable = amount + 1
+        best = [0] + [unreachable] * amount
+        for total in range(1, amount + 1):
+            for coin in coins:
+                if coin <= total and best[total - coin] + 1 < best[total]:
+                    best[total] = best[total - coin] + 1
+        return None if best[amount] == unreachable else best[amount]
+
+    @staticmethod
+    def knapsack_01(items: Sequence[tuple[int, int]], capacity: int, *, max_cells: int | None = None) -> int:
+        """Best total value of ``(weight, value)`` items within ``capacity``, each used once."""
+        if capacity < 0 or any(weight < 0 or value < 0 for weight, value in items):
+            raise InvalidInputError("capacity, weights and values must be non-negative")
+        _require_cells(len(items) * (capacity + 1), max_cells)
+        best = [0] * (capacity + 1)
+        for weight, value in items:
+            for room in range(capacity, weight - 1, -1):
+                best[room] = max(best[room], best[room - weight] + value)
+        return best[capacity]
+
+    @staticmethod
+    def longest_common_subsequence(
+        left: Sequence[Any], right: Sequence[Any], *, max_cells: int | None = None
+    ) -> int:
+        _require_cells(len(left) * len(right), max_cells)
+        previous = [0] * (len(right) + 1)
+        for a in left:
+            current = [0]
+            for j, b in enumerate(right, start=1):
+                current.append(previous[j - 1] + 1 if a == b else max(previous[j], current[j - 1]))
+            previous = current
+        return previous[-1]
+
+    @staticmethod
+    def edit_distance(left: Sequence[Any], right: Sequence[Any], *, max_cells: int | None = None) -> int:
+        """Levenshtein distance: fewest insertions, deletions and substitutions."""
+        _require_cells(len(left) * len(right), max_cells)
+        previous = list(range(len(right) + 1))
+        for i, a in enumerate(left, start=1):
+            current = [i]
+            for j, b in enumerate(right, start=1):
+                current.append(
+                    min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (0 if a == b else 1))
+                )
+            previous = current
+        return previous[-1]
+
+
+# ============================================================================
+# algorithms/greedy.py
+# ============================================================================
+Interval = tuple[int, int]
+
+
+def _check(intervals: Sequence[Interval]) -> None:
+    for start, end in intervals:
+        if start > end:
+            raise InvalidInputError(f"interval start exceeds end: {(start, end)}")
+
+
+class GreedyAlgorithms:
+    @staticmethod
+    def merge_intervals(intervals: Sequence[Interval]) -> list[Interval]:
+        """Merge overlapping or touching intervals; sort by start, then sweep."""
+        _check(intervals)
+        merged: list[Interval] = []
+        for start, end in sorted(intervals):
+            if merged and start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        return merged
+
+    @staticmethod
+    def max_non_overlapping(intervals: Sequence[Interval]) -> list[Interval]:
+        """Largest set of pairwise non-overlapping intervals (touching is allowed).
+
+        Choosing the interval that ends first keeps the most room for the rest.
+        """
+        _check(intervals)
+        chosen: list[Interval] = []
+        last_end: int | None = None
+        for start, end in sorted(intervals, key=lambda item: (item[1], item[0])):
+            if last_end is None or start >= last_end:
+                chosen.append((start, end))
+                last_end = end
+        return chosen
+
+    @staticmethod
+    def can_jump(steps: Sequence[int]) -> bool:
+        """Whether the last index is reachable when ``steps[i]`` is the longest jump from ``i``."""
+        if any(step < 0 for step in steps):
+            raise InvalidInputError("jump lengths must be non-negative")
+        reach = 0
+        for index, step in enumerate(steps):
+            if index > reach:
+                return False
+            reach = max(reach, index + step)
+        return True
+
+
+# ============================================================================
+# algorithms/backtracking.py
+# ============================================================================
+S = TypeVar("S")
+_start: tuple[int, tuple[Any, ...]] = (0, ())
+
+
+class BacktrackingAlgorithms:
+    @staticmethod
+    def explore(
+        root: S,
+        children: Callable[[S], Iterable[S]],
+        is_solution: Callable[[S], bool],
+        *,
+        max_nodes: int = -1,
+    ) -> Iterator[S]:
+        """Yield solution states in depth-first order, visiting at most ``max_nodes`` states."""
+        visited = 1
+        if is_solution(root):
+            yield root
+        stack: list[Iterator[S]] = [iter(children(root))]
+        while stack:
+            try:
+                child = next(stack[-1])
+            except StopIteration:
+                stack.pop()
+                continue
+            visited += 1
+            if 0 <= max_nodes < visited:
+                raise CapacityExceededError(f"search visited more than {max_nodes} states")
+            if is_solution(child):
+                yield child
+            stack.append(iter(children(child)))
+
+    @staticmethod
+    def subsets(values: Sequence[Any], *, max_nodes: int = -1) -> Iterator[tuple[Any, ...]]:
+        """Every subset (positions are distinct, so equal values are not de-duplicated)."""
+        count = len(values)
+        for _, chosen in BacktrackingAlgorithms.explore(
+            _start,
+            lambda s: ((i + 1, (*s[1], values[i])) for i in range(s[0], count)),
+            lambda s: True,
+            max_nodes=max_nodes,
+        ):
+            yield chosen
+
+    @staticmethod
+    def permutations(values: Sequence[Any], *, max_nodes: int = -1) -> Iterator[tuple[Any, ...]]:
+        count = len(values)
+        for _, chosen in BacktrackingAlgorithms.explore(
+            _start,
+            lambda s: ((s[0] | (1 << i), (*s[1], values[i])) for i in range(count) if not s[0] >> i & 1),
+            lambda s: len(s[1]) == count,
+            max_nodes=max_nodes,
+        ):
+            yield chosen
+
+    @staticmethod
+    def combinations(values: Sequence[Any], k: int, *, max_nodes: int = -1) -> Iterator[tuple[Any, ...]]:
+        """Every ``k``-element selection, in input order."""
+        if k < 0:
+            raise InvalidInputError("k must be non-negative")
+        count = len(values)
+        for _, chosen in BacktrackingAlgorithms.explore(
+            _start,
+            lambda s: (
+                (i + 1, (*s[1], values[i]))
+                for i in range(s[0], count - (k - len(s[1])) + 1 if len(s[1]) < k else 0)
+            ),
+            lambda s: len(s[1]) == k,
+            max_nodes=max_nodes,
+        ):
+            yield chosen
+
+    @staticmethod
+    def combination_sum(
+        candidates: Sequence[int], target: int, *, max_nodes: int = -1
+    ) -> Iterator[tuple[int, ...]]:
+        """Multisets of candidates (each reusable) summing to ``target``; candidates must be positive."""
+        if any(c <= 0 for c in candidates):
+            raise InvalidInputError("candidates must be positive")
+        ordered = sorted(set(candidates))
+        for _, chosen, _remaining in BacktrackingAlgorithms.explore(
+            (0, cast(tuple[int, ...], ()), target),
+            lambda s: (
+                (i, (*s[1], ordered[i]), s[2] - ordered[i])
+                for i in range(s[0], len(ordered))
+                if ordered[i] <= s[2]
+            ),
+            lambda s: s[2] == 0 and bool(s[1]),
+            max_nodes=max_nodes,
+        ):
+            yield chosen
+
+    @staticmethod
+    def n_queens(n: int, *, max_nodes: int = -1) -> Iterator[tuple[int, ...]]:
+        """Placements as a tuple of column per row, with no two queens attacking."""
+        if n < 1:
+            raise InvalidInputError("n must be >= 1")
+
+        def safe(placed: tuple[int, ...], column: int) -> bool:
+            row = len(placed)
+            return all(column != c and abs(column - c) != row - r for r, c in enumerate(placed))
+
+        yield from BacktrackingAlgorithms.explore(
+            cast(tuple[int, ...], ()),
+            lambda s: ((*s, c) for c in range(n) if safe(s, c)),
+            lambda s: len(s) == n,
+            max_nodes=max_nodes,
+        )
+
+
+# ============================================================================
 # capabilities/base.py
 # ============================================================================
 F = TypeVar("F", bound=Callable[..., Any])
@@ -2866,6 +3507,24 @@ class SearchService(BaseDSACapability):
         context.found = bool(words)
         return words
 
+    @operation(
+        describe(
+            "FIRST_TRUE",
+            capability,
+            "SEQUENCE",
+            "O(log n) predicate calls",
+            "O(1)",
+            preconditions=("predicate is monotone over the sequence: False..., then True...",),
+            postconditions=("index of the first True, or NOT_FOUND carrying len(values)",),
+        ),
+        requires=("predicate",),
+    )
+    def _first_true(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        values = context.state.values
+        index = SearchAlgorithms.first_true(values, args["predicate"], metrics=self._metrics(context, args))
+        context.found = index < len(values)
+        return index
+
 
 # ============================================================================
 # capabilities/ordering.py
@@ -3141,6 +3800,157 @@ class QueryService(BaseDSACapability):
     def _topological_sort(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[str]:
         return GraphAlgorithms.topological_sort(context.state)
 
+    # -- hashing patterns (sequence)
+    @operation(
+        describe("HAS_DUPLICATE", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("hashable values",))
+    )
+    def _has_duplicate(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        return HashingAlgorithms.has_duplicate(context.state.values)
+
+    @operation(
+        describe("FREQUENCY", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("hashable values",))
+    )
+    def _frequency(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> dict[Any, int]:
+        return HashingAlgorithms.frequency(context.state.values)
+
+    @operation(
+        describe(
+            "GROUP_ANAGRAMS",
+            capability,
+            "SEQUENCE",
+            "O(n * L log L)",
+            "O(n * L)",
+            preconditions=("string values",),
+        )
+    )
+    def _group_anagrams(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[list[str]]:
+        return HashingAlgorithms.group_anagrams(context.state.values)
+
+    @operation(
+        describe(
+            "LONGEST_CONSECUTIVE", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("integer values",)
+        )
+    )
+    def _longest_consecutive(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return HashingAlgorithms.longest_consecutive(context.state.values)
+
+    @operation(
+        describe(
+            "SUBARRAY_SUM_COUNT", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("integer values",)
+        ),
+        requires=("target",),
+    )
+    def _subarray_sum_count(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return HashingAlgorithms.subarray_sum_count(context.state.values, args["target"])
+
+    @operation(
+        describe("FIRST_UNIQUE", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("hashable values",))
+    )
+    def _first_unique(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int | None:
+        index = HashingAlgorithms.first_unique(context.state.values)
+        context.found = index is not None
+        return index
+
+    # -- two pointers and windows (sequence)
+    @operation(
+        describe(
+            "PAIR_SUM_SORTED",
+            capability,
+            "SEQUENCE",
+            "O(n)",
+            "O(1)",
+            preconditions=("sequence sorted ascending",),
+        ),
+        requires=("target",),
+    )
+    def _pair_sum_sorted(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        if not SearchAlgorithms.is_sorted(context.state.values):
+            raise AlgorithmPreconditionError("PAIR_SUM_SORTED requires a sorted sequence")
+        pair = WindowAlgorithms.pair_sum_sorted(context.state.values, args["target"])
+        context.found = pair is not None
+        return pair
+
+    @operation(
+        describe(
+            "LONGEST_UNIQUE_WINDOW",
+            capability,
+            "SEQUENCE",
+            "O(n)",
+            "O(n)",
+            preconditions=("hashable values",),
+        )
+    )
+    def _longest_unique_window(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return WindowAlgorithms.longest_unique_window(context.state.values)
+
+    @operation(
+        describe(
+            "MIN_SUBARRAY_LENGTH",
+            capability,
+            "SEQUENCE",
+            "O(n)",
+            "O(1)",
+            preconditions=("non-negative integers",),
+        ),
+        requires=("target",),
+    )
+    def _min_subarray_length(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return WindowAlgorithms.min_subarray_length(context.state.values, args["target"])
+
+    @operation(
+        describe("MAX_AREA", capability, "SEQUENCE", "O(n)", "O(1)", preconditions=("non-negative heights",))
+    )
+    def _max_area(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return WindowAlgorithms.max_area(context.state.values)
+
+    # -- heap patterns (sequence) and the heap itself
+    @operation(
+        describe(
+            "TOP_K",
+            capability,
+            "SEQUENCE",
+            "O(n log k)",
+            "O(k)",
+            preconditions=("mutually comparable values",),
+        ),
+        requires=("k",),
+    )
+    def _top_k(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[Any]:
+        return HeapAlgorithms.top_k(context.state.values, args["k"], largest=bool(args.get("largest", True)))
+
+    @operation(
+        describe(
+            "MERGE_SORTED",
+            capability,
+            "SEQUENCE",
+            "O(N log k)",
+            "O(N)",
+            preconditions=("each value is itself a sorted list",),
+        )
+    )
+    def _merge_sorted(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[Any]:
+        return HeapAlgorithms.merge_sorted(context.state.values)
+
+    @operation(describe("PEEK", capability, "HEAP", "O(1)", "O(1)", returns_internal_reference=True))
+    def _heap_peek(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        return HeapAlgorithms.peek(context.state)
+
+    # -- union-find
+    @operation(describe("FIND", capability, "UNION_FIND", "O(log n)", "O(1)"), requires=("element",))
+    def _uf_find(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        return UnionFindAlgorithms.find(context.state, args["element"], compress=False)
+
+    @operation(
+        describe("CONNECTED", capability, "UNION_FIND", "O(log n)", "O(1)"), requires=("left", "right")
+    )
+    def _uf_connected(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        return UnionFindAlgorithms.connected(context.state, args["left"], args["right"], compress=False)
+
+    @operation(describe("COMPONENT_COUNT", capability, "UNION_FIND", "O(1)", "O(1)"))
+    def _uf_components(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        count: int = context.state.components
+        return count
+
 
 # ============================================================================
 # capabilities/mutation.py
@@ -3308,6 +4118,34 @@ class MutationService(BaseDSACapability):
         GraphRepository().remove_vertex(ctx.state, args["vertex_id"])
         self._changed(ctx)
 
+    # -- heap
+    @operation(_m("PUSH", "HEAP", "O(log n)"), requires=("value",))
+    def _heap_push(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        HeapAlgorithms.push(ctx.state, args["value"])
+        self._changed(ctx)
+        return len(ctx.state.values)
+
+    @operation(_m("POP", "HEAP", "O(log n)"))
+    def _heap_pop(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        value = HeapAlgorithms.pop(ctx.state)
+        self._changed(ctx)
+        return value
+
+    # -- union-find
+    @operation(_m("ADD", "UNION_FIND"), requires=("element",))
+    def _uf_add(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        added = UnionFindAlgorithms.make_set(ctx.state, args["element"])
+        if added:
+            self._changed(ctx)
+        return added
+
+    @operation(_m("UNION", "UNION_FIND", "O(log n)"), requires=("left", "right"))
+    def _uf_union(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        merged = UnionFindAlgorithms.union(ctx.state, args["left"], args["right"])
+        if merged:
+            self._changed(ctx)
+        return merged
+
 
 # ============================================================================
 # capabilities/validation.py
@@ -3324,6 +4162,237 @@ class ValidationService(BaseDSACapability):
         if not report.valid:
             context.warn("INVARIANT_VIOLATIONS", f"{len(report.violations)} violation(s)")
         return report
+
+
+# ============================================================================
+# capabilities/optimization.py
+# ============================================================================
+class OptimizationService(BaseDSACapability):
+    capability = "OPTIMIZATION"
+
+    def _cells(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        limit: int = self._setting(context, "dp_max_cells", args)
+        return limit
+
+    # -- dynamic programming
+    @operation(describe("HOUSE_ROBBER", capability, "SEQUENCE", "O(n)", "O(1)", postconditions=("DP",)))
+    def _house_robber(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return DynamicProgrammingAlgorithms.house_robber(context.state.values)
+
+    @operation(
+        describe(
+            "LONGEST_INCREASING_SUBSEQUENCE",
+            capability,
+            "SEQUENCE",
+            "O(n log n)",
+            "O(n)",
+            postconditions=("DP with lower bound; length of a strictly increasing subsequence",),
+        )
+    )
+    def _lis(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return DynamicProgrammingAlgorithms.longest_increasing_subsequence(context.state.values)
+
+    @operation(
+        describe(
+            "COIN_CHANGE",
+            capability,
+            "SEQUENCE",
+            "O(amount * coins)",
+            "O(amount)",
+            preconditions=("coins positive", "amount >= 0"),
+            postconditions=("DP; fewest coins, or NOT_FOUND if the amount cannot be made",),
+        ),
+        requires=("amount",),
+    )
+    def _coin_change(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int | None:
+        count = DynamicProgrammingAlgorithms.coin_change(
+            context.state.values, args["amount"], max_cells=self._cells(context, args)
+        )
+        context.found = count is not None
+        return count
+
+    @operation(
+        describe(
+            "KNAPSACK_01",
+            capability,
+            "SEQUENCE",
+            "O(items * capacity)",
+            "O(capacity)",
+            preconditions=("values are (weight, value) pairs of non-negative integers",),
+            postconditions=("DP; best total value",),
+        ),
+        requires=("capacity",),
+    )
+    def _knapsack(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return DynamicProgrammingAlgorithms.knapsack_01(
+            context.state.values, args["capacity"], max_cells=self._cells(context, args)
+        )
+
+    @operation(
+        describe(
+            "LONGEST_COMMON_SUBSEQUENCE",
+            capability,
+            "SEQUENCE",
+            "O(n * m)",
+            "O(m)",
+            postconditions=("DP; length against the `other` sequence",),
+        ),
+        requires=("other",),
+    )
+    def _lcs(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return DynamicProgrammingAlgorithms.longest_common_subsequence(
+            context.state.values, args["other"], max_cells=self._cells(context, args)
+        )
+
+    @operation(
+        describe(
+            "EDIT_DISTANCE",
+            capability,
+            "SEQUENCE",
+            "O(n * m)",
+            "O(m)",
+            postconditions=("DP; Levenshtein distance to the `other` sequence",),
+        ),
+        requires=("other",),
+    )
+    def _edit_distance(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return DynamicProgrammingAlgorithms.edit_distance(
+            context.state.values, args["other"], max_cells=self._cells(context, args)
+        )
+
+    # -- greedy
+    @operation(
+        describe(
+            "MERGE_INTERVALS",
+            capability,
+            "SEQUENCE",
+            "O(n log n)",
+            "O(n)",
+            preconditions=("values are (start, end) pairs with start <= end",),
+            postconditions=("greedy; disjoint intervals in order",),
+        )
+    )
+    def _merge_intervals(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[Any]:
+        return GreedyAlgorithms.merge_intervals(context.state.values)
+
+    @operation(
+        describe(
+            "MAX_NON_OVERLAPPING",
+            capability,
+            "SEQUENCE",
+            "O(n log n)",
+            "O(n)",
+            preconditions=("values are (start, end) pairs with start <= end",),
+            postconditions=("greedy by earliest end; a largest set of non-overlapping intervals",),
+        )
+    )
+    def _max_non_overlapping(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[Any]:
+        return GreedyAlgorithms.max_non_overlapping(context.state.values)
+
+    @operation(
+        describe(
+            "CAN_JUMP",
+            capability,
+            "SEQUENCE",
+            "O(n)",
+            "O(1)",
+            preconditions=("jump lengths non-negative",),
+            postconditions=("greedy furthest reach",),
+        )
+    )
+    def _can_jump(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        return GreedyAlgorithms.can_jump(context.state.values)
+
+
+# ============================================================================
+# capabilities/enumeration.py
+# ============================================================================
+class EnumerationService(BaseDSACapability):
+    capability = "ENUMERATION"
+
+    def _collect(
+        self,
+        context: DSAExecutionContext,
+        args: Mapping[str, Any],
+        build: Any,
+    ) -> list[tuple[Any, ...]]:
+        limit: int = self._setting(context, "enumeration_limit", args)
+        max_nodes: int = self._setting(context, "enumeration_max_nodes", args)
+        stream: Iterator[tuple[Any, ...]] = build(max_nodes)
+        found: list[tuple[Any, ...]] = []
+        for solution in stream:
+            if 0 <= limit <= len(found):
+                context.metadata["truncated"] = True
+                context.warn("TRUNCATED", f"stopped at enumeration_limit={limit}; more solutions exist")
+                break
+            found.append(solution)
+        context.found = bool(found)
+        context.affected_count = 0
+        return found
+
+    @operation(
+        describe(
+            "SUBSETS",
+            capability,
+            "SEQUENCE",
+            "O(2^n)",
+            "O(n)",
+            postconditions=("backtracking; every subset, positions treated as distinct",),
+        )
+    )
+    def _subsets(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[tuple[Any, ...]]:
+        return self._collect(
+            context, args, lambda m: BacktrackingAlgorithms.subsets(context.state.values, max_nodes=m)
+        )
+
+    @operation(
+        describe(
+            "PERMUTATIONS",
+            capability,
+            "SEQUENCE",
+            "O(n!)",
+            "O(n)",
+            postconditions=("backtracking; every ordering, positions treated as distinct",),
+        )
+    )
+    def _permutations(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[tuple[Any, ...]]:
+        return self._collect(
+            context, args, lambda m: BacktrackingAlgorithms.permutations(context.state.values, max_nodes=m)
+        )
+
+    @operation(
+        describe("COMBINATIONS", capability, "SEQUENCE", "O(C(n, k))", "O(k)"),
+        requires=("k",),
+    )
+    def _combinations(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[tuple[Any, ...]]:
+        return self._collect(
+            context,
+            args,
+            lambda m: BacktrackingAlgorithms.combinations(context.state.values, args["k"], max_nodes=m),
+        )
+
+    @operation(
+        describe(
+            "COMBINATION_SUM",
+            capability,
+            "SEQUENCE",
+            "exponential in target / smallest candidate",
+            "O(target / smallest candidate)",
+            preconditions=("candidates positive",),
+            postconditions=("backtracking; reusable candidates summing to target",),
+        ),
+        requires=("target",),
+    )
+    def _combination_sum(
+        self, context: DSAExecutionContext, args: Mapping[str, Any]
+    ) -> list[tuple[Any, ...]]:
+        return self._collect(
+            context,
+            args,
+            lambda m: BacktrackingAlgorithms.combination_sum(
+                context.state.values, args["target"], max_nodes=m
+            ),
+        )
 
 
 # ============================================================================
@@ -3413,6 +4482,8 @@ def build_default_registry() -> CapabilityRegistry:
         QueryService(),
         MutationService(),
         ValidationService(),
+        OptimizationService(),
+        EnumerationService(),
     ):
         registry.register_service(service)
     return registry
@@ -3572,6 +4643,8 @@ __all__ = [
     'TrieNode',
     'TrieState',
     'GraphState',
+    'HeapState',
+    'UnionFindState',
     'NavigableAdapter',
     'TreeAdapter',
     'GraphAdapter',
@@ -3584,6 +4657,8 @@ __all__ = [
     'BSTValidator',
     'TrieValidator',
     'GraphValidator',
+    'HeapValidator',
+    'UnionFindValidator',
     'VALIDATORS',
     'validator_for',
     'SearchAlgorithms',
@@ -3597,6 +4672,13 @@ __all__ = [
     'BSTAlgorithms',
     'TrieAlgorithms',
     'GraphAlgorithms',
+    'HeapAlgorithms',
+    'UnionFindAlgorithms',
+    'HashingAlgorithms',
+    'WindowAlgorithms',
+    'DynamicProgrammingAlgorithms',
+    'GreedyAlgorithms',
+    'BacktrackingAlgorithms',
     'SequenceRepository',
     'LinkedListRepository',
     'StackRepository',
@@ -3613,6 +4695,8 @@ __all__ = [
     'QueryService',
     'MutationService',
     'ValidationService',
+    'OptimizationService',
+    'EnumerationService',
     'ADAPTER_FACTORIES',
     'CapabilityRegistry',
     'DSAFacade',

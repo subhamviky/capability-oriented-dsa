@@ -84,6 +84,7 @@ discipline sits around it instead of inside it.
 | See three enterprise-shaped problems solved end to end (scale lookup, calculation order, hierarchy scope) | [docs/enterprise-bridge.md](docs/enterprise-bridge.md) and [examples/enterprise_bridge.py](examples/enterprise_bridge.py) |
 | Understand the layers, lifecycle and result semantics | [docs/architecture.md](docs/architecture.md) |
 | Look up a configuration key | [docs/configuration.md](docs/configuration.md) |
+| See common interview problems mapped to core and derived concepts, and what is not covered | [docs/interview-patterns.md](docs/interview-patterns.md) |
 | Add your own algorithm | [Extending](#extending) |
 
 ## Design in one screen
@@ -94,11 +95,14 @@ discipline sits around it instead of inside it.
 | Explicit state | `GraphState`, `BSTState`, … are plain dataclasses. Nothing hides in service instances. |
 | Capabilities, not hierarchies | One BFS/DFS serves trees and graphs through the `NavigableAdapter` port. |
 | One governed entry point | `BaseDSACapability.execute()` owns the lifecycle: public method, protected hooks, private invariants. |
+| Core, then derived | Structures and algorithm families are core. Dynamic programming, greedy, backtracking, hashing and window patterns are derived: they reuse a core structure and are bounded by explicit limits. |
 | Declared, not branched | `@operation(descriptor)` builds the dispatch table, and the registry and metadata derive from it. |
-| Central configuration | 19 registered keys resolved as `kwargs > config > env > scoped default > default`, cast and validated. |
+| Central configuration | 22 registered keys resolved as `kwargs > config > env > scoped default > default`, cast and validated. |
 | Honest results | `SUCCESS` / `NOT_FOUND` / `FAILURE` with stable error codes; misses are outcomes, not exceptions. |
 
 ## What is in the box
+
+100 governed operations. *Core* structures and algorithm families come first; *derived* approaches reuse them and add no new structure (see [docs/interview-patterns.md](docs/interview-patterns.md)).
 
 | Structure | Governed capabilities |
 |---|---|
@@ -109,6 +113,11 @@ discipline sits around it instead of inside it.
 | BST | lookup · inorder · insert / delete, plain or AVL (`bst_balance_policy`) |
 | Trie | contains · prefix autocomplete · insert / delete |
 | Graph | BFS / DFS · BFS shortest path · Dijkstra (eager, lazy or trusted negative-weight policy) · bounded all-simple-paths · cycle detection · topological sort · vertex/edge mutations |
+| Heap | push / pop / peek · top-k and k-way merge over a sequence |
+| Union-find | add / union · find / connected / component count |
+| **Derived:** hashing, windows | duplicates, frequency, anagram groups, longest consecutive run, subarray-sum counts · sorted pair sum, longest unique window, shortest window, max area |
+| **Derived:** `OPTIMIZATION` | dynamic programming (house robber, LIS, coin change, 0/1 knapsack, LCS, edit distance) and greedy (merge intervals, max non-overlapping, jump game) |
+| **Derived:** `ENUMERATION` | backtracking: subsets, permutations, combinations, combination sum, bounded and lazy |
 | All | `VALIDATION/VALIDATE`: iterative structural invariant checks |
 
 Every operation is self-describing:
@@ -177,6 +186,7 @@ pattern near a production system.
 |---|---|
 | [docs/vocabulary.md](docs/vocabulary.md) | Enterprise constructs mapped to computer science terms and to this package, with ABAP/RAP in detail |
 | [docs/enterprise-bridge.md](docs/enterprise-bridge.md) | Construct-to-capability table and three worked examples |
+| [docs/interview-patterns.md](docs/interview-patterns.md) | Core versus derived concepts, common problems mapped to operations, and what is not covered |
 | [docs/architecture.md](docs/architecture.md) | Layers, lifecycle, result semantics, capability matrix, extension guide |
 | [docs/configuration.md](docs/configuration.md) | Every config key, its default, allowed values and cost |
 | [docs/adr/](docs/adr/) | Architecture decision records |

@@ -13,8 +13,10 @@ from collections.abc import Mapping
 from typing import Any
 
 from ..algorithms.bst import BSTAlgorithms
+from ..algorithms.heaps import HeapAlgorithms
 from ..algorithms.linked_list import LinkedListAlgorithms
 from ..algorithms.trie import TrieAlgorithms
+from ..algorithms.union_find import UnionFindAlgorithms
 from ..core.errors import NotFoundError
 from ..core.metadata import describe
 from ..core.results import DSAExecutionContext
@@ -191,3 +193,31 @@ class MutationService(BaseDSACapability):
     def _remove_vertex(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> None:
         GraphRepository().remove_vertex(ctx.state, args["vertex_id"])
         self._changed(ctx)
+
+    # -- heap
+    @operation(_m("PUSH", "HEAP", "O(log n)"), requires=("value",))
+    def _heap_push(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        HeapAlgorithms.push(ctx.state, args["value"])
+        self._changed(ctx)
+        return len(ctx.state.values)
+
+    @operation(_m("POP", "HEAP", "O(log n)"))
+    def _heap_pop(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        value = HeapAlgorithms.pop(ctx.state)
+        self._changed(ctx)
+        return value
+
+    # -- union-find
+    @operation(_m("ADD", "UNION_FIND"), requires=("element",))
+    def _uf_add(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        added = UnionFindAlgorithms.make_set(ctx.state, args["element"])
+        if added:
+            self._changed(ctx)
+        return added
+
+    @operation(_m("UNION", "UNION_FIND", "O(log n)"), requires=("left", "right"))
+    def _uf_union(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        merged = UnionFindAlgorithms.union(ctx.state, args["left"], args["right"])
+        if merged:
+            self._changed(ctx)
+        return merged

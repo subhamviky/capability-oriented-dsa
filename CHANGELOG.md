@@ -6,6 +6,14 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Two core structures: `HEAP` (`HeapState`; push, pop, peek) and `UNION_FIND` (`UnionFindState`; add, union, find, connected, component count), each with a validator.
+- Derived approaches over a sequence: hashing patterns (duplicates, frequency, anagram groups, longest consecutive run, subarray-sum count, first unique), two pointers and windows (sorted pair sum, longest unique window, shortest subarray, max area), heap patterns (`TOP_K`, `MERGE_SORTED`) and `SEARCH / FIRST_TRUE` for binary search on an answer.
+- New capabilities `OPTIMIZATION` (dynamic programming: house robber, longest increasing subsequence, coin change, 0/1 knapsack, longest common subsequence, edit distance; greedy: merge intervals, max non-overlapping, jump game) and `ENUMERATION` (backtracking: subsets, permutations, combinations, combination sum), plus an `n_queens` kernel.
+- Three configuration keys bounding the derived approaches: `dp_max_cells`, `enumeration_limit`, `enumeration_max_nodes` (22 keys in total, 100 governed operations).
+- `docs/interview-patterns.md`: core versus derived concepts, common problems mapped to operations, and what is not covered.
+
 ## [0.1.0] - 2026-11-07
 
 Initial release.

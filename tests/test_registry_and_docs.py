@@ -106,3 +106,18 @@ def test_enums_cover_every_registered_name(dsa: ModuleType) -> None:
     keys = dsa.DSAFacade().capabilities()
     assert {k[0] for k in keys} == {s.value for s in dsa.StructureType}
     assert {k[1] for k in keys} == {c.value for c in dsa.CapabilityName}
+
+
+def test_interview_patterns_index_lists_every_operation(dsa: ModuleType) -> None:
+    text = Path(ROOT / "docs" / "interview-patterns.md").read_text(encoding="utf-8")
+    rows = {
+        line.split("|")[1].strip().strip("`"): line
+        for line in text.splitlines()
+        if line.startswith("| `") and " / " in line.split("|")[1]
+    }
+    missing = [
+        f"{structure} / {capability} / {operation}"
+        for structure, capability, operation in dsa.DSAFacade().capabilities()
+        if f"`{operation}`" not in rows.get(f"{structure} / {capability}", "")
+    ]
+    assert not missing, f"add these to the operation index in docs/interview-patterns.md: {missing}"

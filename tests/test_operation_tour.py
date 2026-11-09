@@ -62,6 +62,18 @@ def graph(dsa: ModuleType) -> Any:
     )
 
 
+def heap(dsa: Any) -> Any:
+    return dsa.HeapAlgorithms.heapify([5, 1, 4, 2])
+
+
+def dsu(dsa: Any) -> Any:
+    state = dsa.UnionFindState()
+    for element in "abcd":
+        dsa.UnionFindAlgorithms.make_set(state, element)
+    dsa.UnionFindAlgorithms.union(state, "a", "b")
+    return state
+
+
 def ok(expected: Any) -> Callable[[Any, Any], bool]:
     return lambda data, _state: data == expected
 
@@ -187,6 +199,168 @@ CASES: list[Case] = [
         lambda d, s: "b" not in s.adjacency["a"],
     ),
     ("GRAPH", "VALIDATION", "VALIDATE", graph, {}, lambda d, s: d.valid),
+    ("SEQUENCE", "SEARCH", "FIRST_TRUE", sorted_seq, {"predicate": lambda v: v >= 4}, ok(2)),
+    ("SEQUENCE", "QUERY", "HAS_DUPLICATE", lambda dsa: dsa.SequenceState([1, 2, 1]), {}, ok(True)),
+    ("SEQUENCE", "QUERY", "FREQUENCY", lambda dsa: dsa.SequenceState(list("aab")), {}, ok({"a": 2, "b": 1})),
+    (
+        "SEQUENCE",
+        "QUERY",
+        "GROUP_ANAGRAMS",
+        lambda dsa: dsa.SequenceState(["eat", "tea", "tan", "ate"]),
+        {},
+        ok([["eat", "tea", "ate"], ["tan"]]),
+    ),
+    (
+        "SEQUENCE",
+        "QUERY",
+        "LONGEST_CONSECUTIVE",
+        lambda dsa: dsa.SequenceState([100, 4, 200, 1, 3, 2]),
+        {},
+        ok(4),
+    ),
+    (
+        "SEQUENCE",
+        "QUERY",
+        "SUBARRAY_SUM_COUNT",
+        lambda dsa: dsa.SequenceState([1, 1, 1]),
+        {"target": 2},
+        ok(2),
+    ),
+    ("SEQUENCE", "QUERY", "FIRST_UNIQUE", lambda dsa: dsa.SequenceState(list("aabc")), {}, ok(2)),
+    ("SEQUENCE", "QUERY", "PAIR_SUM_SORTED", sorted_seq, {"target": 8}, ok((0, 3))),
+    (
+        "SEQUENCE",
+        "QUERY",
+        "LONGEST_UNIQUE_WINDOW",
+        lambda dsa: dsa.SequenceState(list("abcabcbb")),
+        {},
+        ok(3),
+    ),
+    (
+        "SEQUENCE",
+        "QUERY",
+        "MIN_SUBARRAY_LENGTH",
+        lambda dsa: dsa.SequenceState([2, 3, 1, 2, 4, 3]),
+        {"target": 7},
+        ok(2),
+    ),
+    ("SEQUENCE", "QUERY", "MAX_AREA", lambda dsa: dsa.SequenceState([1, 8, 6, 2, 5, 4, 8, 3, 7]), {}, ok(49)),
+    ("SEQUENCE", "QUERY", "TOP_K", seq, {"k": 2}, ok([7, 4])),
+    (
+        "SEQUENCE",
+        "QUERY",
+        "MERGE_SORTED",
+        lambda dsa: dsa.SequenceState([[1, 4], [2, 3]]),
+        {},
+        ok([1, 2, 3, 4]),
+    ),
+    ("HEAP", "QUERY", "PEEK", heap, {}, ok(1)),
+    ("HEAP", "MUTATION", "PUSH", heap, {"value": 0}, lambda d, s: s.values[0] == 0 and d == 5),
+    ("HEAP", "MUTATION", "POP", heap, {}, lambda d, s: d == 1 and s.values[0] == 2),
+    ("HEAP", "VALIDATION", "VALIDATE", heap, {}, lambda d, s: d.valid),
+    ("UNION_FIND", "QUERY", "FIND", dsu, {"element": "b"}, ok("a")),
+    ("UNION_FIND", "QUERY", "CONNECTED", dsu, {"left": "a", "right": "b"}, ok(True)),
+    ("UNION_FIND", "QUERY", "COMPONENT_COUNT", dsu, {}, ok(3)),
+    ("UNION_FIND", "MUTATION", "ADD", dsu, {"element": "e"}, lambda d, s: d is True and s.components == 4),
+    (
+        "UNION_FIND",
+        "MUTATION",
+        "UNION",
+        dsu,
+        {"left": "c", "right": "d"},
+        lambda d, s: d is True and s.components == 2,
+    ),
+    ("UNION_FIND", "VALIDATION", "VALIDATE", dsu, {}, lambda d, s: d.valid),
+    ("SEQUENCE", "OPTIMIZATION", "HOUSE_ROBBER", lambda dsa: dsa.SequenceState([2, 7, 9, 3, 1]), {}, ok(12)),
+    (
+        "SEQUENCE",
+        "OPTIMIZATION",
+        "LONGEST_INCREASING_SUBSEQUENCE",
+        lambda dsa: dsa.SequenceState([10, 9, 2, 5, 3, 7, 101, 18]),
+        {},
+        ok(4),
+    ),
+    (
+        "SEQUENCE",
+        "OPTIMIZATION",
+        "COIN_CHANGE",
+        lambda dsa: dsa.SequenceState([1, 2, 5]),
+        {"amount": 11},
+        ok(3),
+    ),
+    (
+        "SEQUENCE",
+        "OPTIMIZATION",
+        "KNAPSACK_01",
+        lambda dsa: dsa.SequenceState([(1, 1), (3, 4), (4, 5), (5, 7)]),
+        {"capacity": 7},
+        ok(9),
+    ),
+    (
+        "SEQUENCE",
+        "OPTIMIZATION",
+        "LONGEST_COMMON_SUBSEQUENCE",
+        lambda dsa: dsa.SequenceState(list("abcde")),
+        {"other": list("ace")},
+        ok(3),
+    ),
+    (
+        "SEQUENCE",
+        "OPTIMIZATION",
+        "EDIT_DISTANCE",
+        lambda dsa: dsa.SequenceState(list("kitten")),
+        {"other": list("sitting")},
+        ok(3),
+    ),
+    (
+        "SEQUENCE",
+        "OPTIMIZATION",
+        "MERGE_INTERVALS",
+        lambda dsa: dsa.SequenceState([(1, 3), (2, 6), (8, 10)]),
+        {},
+        ok([(1, 6), (8, 10)]),
+    ),
+    (
+        "SEQUENCE",
+        "OPTIMIZATION",
+        "MAX_NON_OVERLAPPING",
+        lambda dsa: dsa.SequenceState([(1, 2), (2, 3), (3, 4), (1, 3)]),
+        {},
+        ok([(1, 2), (2, 3), (3, 4)]),
+    ),
+    ("SEQUENCE", "OPTIMIZATION", "CAN_JUMP", lambda dsa: dsa.SequenceState([2, 3, 1, 1, 4]), {}, ok(True)),
+    (
+        "SEQUENCE",
+        "ENUMERATION",
+        "SUBSETS",
+        lambda dsa: dsa.SequenceState([1, 2]),
+        {},
+        ok([(), (1,), (1, 2), (2,)]),
+    ),
+    (
+        "SEQUENCE",
+        "ENUMERATION",
+        "PERMUTATIONS",
+        lambda dsa: dsa.SequenceState([1, 2, 3]),
+        {},
+        lambda d, s: len(d) == 6,
+    ),
+    (
+        "SEQUENCE",
+        "ENUMERATION",
+        "COMBINATIONS",
+        lambda dsa: dsa.SequenceState([1, 2, 3]),
+        {"k": 2},
+        ok([(1, 2), (1, 3), (2, 3)]),
+    ),
+    (
+        "SEQUENCE",
+        "ENUMERATION",
+        "COMBINATION_SUM",
+        lambda dsa: dsa.SequenceState([2, 3, 6, 7]),
+        {"target": 7},
+        ok([(2, 2, 3), (7,)]),
+    ),
 ]
 
 

@@ -18,6 +18,10 @@ detailed example.
 | Dependent calculation steps, build or task dependencies | Directed acyclic graph, topological sort | `GRAPH / QUERY / TOPOLOGICAL_SORT`, `HAS_CYCLE` |
 | Routes, lanes, service dependencies | Graph, shortest path | `GRAPH / PATH / SHORTEST_UNWEIGHTED`, `DIJKSTRA` |
 | Type-ahead, value help by prefix | Trie | `TRIE / SEARCH / PREFIX` |
+| Priority-ordered work, SLA or due-date queue | Heap (priority queue) | `HEAP / MUTATION / PUSH`, `POP`; `SEQUENCE / QUERY / TOP_K` |
+| Duplicate or related records that must be merged into groups | Union-find (disjoint sets) | `UNION_FIND / MUTATION / UNION`, `QUERY / COMPONENT_COUNT` |
+| Counts or groups by key, de-duplication | Hash map patterns | `FREQUENCY`, `GROUP_ANAGRAMS`, `HAS_DUPLICATE` |
+| Overlapping validity periods, booking windows | Intervals (greedy) | `OPTIMIZATION / MERGE_INTERVALS`, `MAX_NON_OVERLAPPING` |
 
 The same lower-bound idea under other platforms' names, all reporting a miss as
 the position where the key would be inserted:
@@ -79,4 +83,7 @@ Where a match is loose, the note column says so.
 | Invariant | A rule a structure must always satisfy, such as "a BST's left subtree is smaller". `VALIDATE` checks them. |
 | Lower bound | The position of the first element not smaller than the target. |
 | Topological order | An ordering where every item appears after the items it depends on. |
+| Dynamic programming | Solving a problem by storing answers to smaller overlapping problems, so each is computed once. |
+| Greedy | Always taking the locally best choice, when that is provably globally best. |
+| Backtracking | Trying each decision in turn and undoing it, which is depth-first search over a tree of choices. |
 | O(log n), O(n) | How the work grows with input size. Every operation lists its own in its descriptor. |

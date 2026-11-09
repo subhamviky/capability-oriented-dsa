@@ -253,6 +253,30 @@ DSA_CONFIG: dict[str, ConfigKey] = {
             "'avl' rebalances after insert/delete; 'unbalanced' does not.",
             choices={"unbalanced", "avl"},
         ),
+        _ck(
+            "dp_max_cells",
+            5_000_000,
+            _to_int,
+            "Derived",
+            "OPTIMIZATION (table-based dynamic programming)",
+            "Refuse inputs whose DP table would exceed this many cells; -1 means unbounded.",
+        ),
+        _ck(
+            "enumeration_limit",
+            1000,
+            _to_int,
+            "Derived",
+            "ENUMERATION",
+            "Return at most this many solutions and flag the result truncated; -1 means unbounded.",
+        ),
+        _ck(
+            "enumeration_max_nodes",
+            1_000_000,
+            _to_int,
+            "Derived",
+            "ENUMERATION",
+            "Fail with CAPACITY_EXCEEDED once the search has visited this many states; -1 means unbounded.",
+        ),
     ]
 }
 

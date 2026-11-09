@@ -8,8 +8,13 @@ below this package are an implementation detail and may move.
 
 from __future__ import annotations
 
+from .algorithms.backtracking import BacktrackingAlgorithms
 from .algorithms.bst import BSTAlgorithms
+from .algorithms.dynamic import DynamicProgrammingAlgorithms
 from .algorithms.graphs import GraphAlgorithms
+from .algorithms.greedy import GreedyAlgorithms
+from .algorithms.hashing import HashingAlgorithms
+from .algorithms.heaps import HeapAlgorithms
 from .algorithms.linked_list import LinkedListAlgorithms
 from .algorithms.search import SearchAlgorithms
 from .algorithms.sequences import QueueAlgorithms, SequenceAlgorithms, StackAlgorithms
@@ -17,8 +22,12 @@ from .algorithms.sorting import SortAlgorithms
 from .algorithms.traversal import TraversalAlgorithms
 from .algorithms.trees import TreeAlgorithms
 from .algorithms.trie import TrieAlgorithms
+from .algorithms.union_find import UnionFindAlgorithms
+from .algorithms.windows import WindowAlgorithms
 from .capabilities.base import BaseDSACapability, OperationSpec, operation
+from .capabilities.enumeration import EnumerationService
 from .capabilities.mutation import MutationService
+from .capabilities.optimization import OptimizationService
 from .capabilities.ordering import OrderingService
 from .capabilities.path import PathService
 from .capabilities.query import QueryService
@@ -76,6 +85,7 @@ from .structures.states import (
     BSTState,
     CapabilityName,
     GraphState,
+    HeapState,
     LinkedListState,
     LinkedNode,
     QueueState,
@@ -85,16 +95,19 @@ from .structures.states import (
     TreeState,
     TrieNode,
     TrieState,
+    UnionFindState,
 )
 from .validation.validators import (
     VALIDATORS,
     BSTValidator,
     ContainerValidator,
     GraphValidator,
+    HeapValidator,
     LinkedListValidator,
     SequenceValidator,
     TreeValidator,
     TrieValidator,
+    UnionFindValidator,
     Validator,
     validator_for,
 )
@@ -158,6 +171,8 @@ __all__ = [
     "TrieNode",
     "TrieState",
     "GraphState",
+    "HeapState",
+    "UnionFindState",
     # ports & adapters
     "NavigableAdapter",
     "TreeAdapter",
@@ -172,6 +187,8 @@ __all__ = [
     "BSTValidator",
     "TrieValidator",
     "GraphValidator",
+    "HeapValidator",
+    "UnionFindValidator",
     "VALIDATORS",
     "validator_for",
     # kernels
@@ -186,6 +203,13 @@ __all__ = [
     "BSTAlgorithms",
     "TrieAlgorithms",
     "GraphAlgorithms",
+    "HeapAlgorithms",
+    "UnionFindAlgorithms",
+    "HashingAlgorithms",
+    "WindowAlgorithms",
+    "DynamicProgrammingAlgorithms",
+    "GreedyAlgorithms",
+    "BacktrackingAlgorithms",
     # repositories
     "SequenceRepository",
     "LinkedListRepository",
@@ -204,6 +228,8 @@ __all__ = [
     "QueryService",
     "MutationService",
     "ValidationService",
+    "OptimizationService",
+    "EnumerationService",
     "ADAPTER_FACTORIES",
     "CapabilityRegistry",
     "DSAFacade",

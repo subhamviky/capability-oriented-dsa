@@ -84,6 +84,30 @@ class SearchAlgorithms:
         return left
 
     @staticmethod
+    def first_true(
+        values: Sequence[T],
+        predicate: Callable[[T], bool],
+        *,
+        metrics: MetricsState | None = None,
+    ) -> int:
+        """Index of the first value satisfying a *monotone* predicate (False... then True...).
+
+        Returns ``len(values)`` if none does. This is lower bound over an answer
+        space: "the smallest capacity/speed/size that works".
+        """
+        m = metrics or MetricsState()
+        low, high = 0, len(values)
+        while low < high:
+            mid = (low + high) // 2
+            m.iterations += 1
+            m.comparisons += 1
+            if predicate(values[mid]):
+                high = mid
+            else:
+                low = mid + 1
+        return low
+
+    @staticmethod
     def is_sorted(values: Sequence[T], *, key: Callable[[T], Any] | None = None) -> bool:
         """Non-decreasing by key. O(n), early exit, iterated at C level (no auxiliary list)."""
         keys: Iterable[Any] = values if key is None else map(key, values)

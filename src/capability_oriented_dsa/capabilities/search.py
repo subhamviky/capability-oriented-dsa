@@ -124,3 +124,21 @@ class SearchService(BaseDSACapability):
         )
         context.found = bool(words)
         return words
+
+    @operation(
+        describe(
+            "FIRST_TRUE",
+            capability,
+            "SEQUENCE",
+            "O(log n) predicate calls",
+            "O(1)",
+            preconditions=("predicate is monotone over the sequence: False..., then True...",),
+            postconditions=("index of the first True, or NOT_FOUND carrying len(values)",),
+        ),
+        requires=("predicate",),
+    )
+    def _first_true(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        values = context.state.values
+        index = SearchAlgorithms.first_true(values, args["predicate"], metrics=self._metrics(context, args))
+        context.found = index < len(values)
+        return index

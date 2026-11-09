@@ -42,6 +42,13 @@ MODULES = [
     "algorithms/bst.py",
     "algorithms/trie.py",
     "algorithms/graphs.py",
+    "algorithms/heaps.py",
+    "algorithms/union_find.py",
+    "algorithms/hashing.py",
+    "algorithms/windows.py",
+    "algorithms/dynamic.py",
+    "algorithms/greedy.py",
+    "algorithms/backtracking.py",
     "capabilities/base.py",
     "capabilities/search.py",
     "capabilities/ordering.py",
@@ -50,6 +57,8 @@ MODULES = [
     "capabilities/query.py",
     "capabilities/mutation.py",
     "capabilities/validation.py",
+    "capabilities/optimization.py",
+    "capabilities/enumeration.py",
     "facade.py",
 ]
 #: Module-level names that may be defined identically in several modules.

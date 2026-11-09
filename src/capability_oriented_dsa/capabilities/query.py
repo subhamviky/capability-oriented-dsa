@@ -7,9 +7,15 @@ from typing import Any
 
 from ..algorithms.bst import BSTAlgorithms
 from ..algorithms.graphs import GraphAlgorithms
+from ..algorithms.hashing import HashingAlgorithms
+from ..algorithms.heaps import HeapAlgorithms
 from ..algorithms.linked_list import LinkedListAlgorithms
+from ..algorithms.search import SearchAlgorithms
 from ..algorithms.sequences import QueueAlgorithms, SequenceAlgorithms, StackAlgorithms
 from ..algorithms.trees import TreeAlgorithms
+from ..algorithms.union_find import UnionFindAlgorithms
+from ..algorithms.windows import WindowAlgorithms
+from ..core.errors import AlgorithmPreconditionError
 from ..core.metadata import describe
 from ..core.results import DSAExecutionContext
 from ..structures.repositories import QueueRepository, SequenceRepository, StackRepository
@@ -123,3 +129,154 @@ class QueryService(BaseDSACapability):
     )
     def _topological_sort(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[str]:
         return GraphAlgorithms.topological_sort(context.state)
+
+    # -- hashing patterns (sequence)
+    @operation(
+        describe("HAS_DUPLICATE", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("hashable values",))
+    )
+    def _has_duplicate(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        return HashingAlgorithms.has_duplicate(context.state.values)
+
+    @operation(
+        describe("FREQUENCY", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("hashable values",))
+    )
+    def _frequency(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> dict[Any, int]:
+        return HashingAlgorithms.frequency(context.state.values)
+
+    @operation(
+        describe(
+            "GROUP_ANAGRAMS",
+            capability,
+            "SEQUENCE",
+            "O(n * L log L)",
+            "O(n * L)",
+            preconditions=("string values",),
+        )
+    )
+    def _group_anagrams(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[list[str]]:
+        return HashingAlgorithms.group_anagrams(context.state.values)
+
+    @operation(
+        describe(
+            "LONGEST_CONSECUTIVE", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("integer values",)
+        )
+    )
+    def _longest_consecutive(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return HashingAlgorithms.longest_consecutive(context.state.values)
+
+    @operation(
+        describe(
+            "SUBARRAY_SUM_COUNT", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("integer values",)
+        ),
+        requires=("target",),
+    )
+    def _subarray_sum_count(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return HashingAlgorithms.subarray_sum_count(context.state.values, args["target"])
+
+    @operation(
+        describe("FIRST_UNIQUE", capability, "SEQUENCE", "O(n)", "O(n)", preconditions=("hashable values",))
+    )
+    def _first_unique(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int | None:
+        index = HashingAlgorithms.first_unique(context.state.values)
+        context.found = index is not None
+        return index
+
+    # -- two pointers and windows (sequence)
+    @operation(
+        describe(
+            "PAIR_SUM_SORTED",
+            capability,
+            "SEQUENCE",
+            "O(n)",
+            "O(1)",
+            preconditions=("sequence sorted ascending",),
+        ),
+        requires=("target",),
+    )
+    def _pair_sum_sorted(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        if not SearchAlgorithms.is_sorted(context.state.values):
+            raise AlgorithmPreconditionError("PAIR_SUM_SORTED requires a sorted sequence")
+        pair = WindowAlgorithms.pair_sum_sorted(context.state.values, args["target"])
+        context.found = pair is not None
+        return pair
+
+    @operation(
+        describe(
+            "LONGEST_UNIQUE_WINDOW",
+            capability,
+            "SEQUENCE",
+            "O(n)",
+            "O(n)",
+            preconditions=("hashable values",),
+        )
+    )
+    def _longest_unique_window(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return WindowAlgorithms.longest_unique_window(context.state.values)
+
+    @operation(
+        describe(
+            "MIN_SUBARRAY_LENGTH",
+            capability,
+            "SEQUENCE",
+            "O(n)",
+            "O(1)",
+            preconditions=("non-negative integers",),
+        ),
+        requires=("target",),
+    )
+    def _min_subarray_length(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return WindowAlgorithms.min_subarray_length(context.state.values, args["target"])
+
+    @operation(
+        describe("MAX_AREA", capability, "SEQUENCE", "O(n)", "O(1)", preconditions=("non-negative heights",))
+    )
+    def _max_area(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        return WindowAlgorithms.max_area(context.state.values)
+
+    # -- heap patterns (sequence) and the heap itself
+    @operation(
+        describe(
+            "TOP_K",
+            capability,
+            "SEQUENCE",
+            "O(n log k)",
+            "O(k)",
+            preconditions=("mutually comparable values",),
+        ),
+        requires=("k",),
+    )
+    def _top_k(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[Any]:
+        return HeapAlgorithms.top_k(context.state.values, args["k"], largest=bool(args.get("largest", True)))
+
+    @operation(
+        describe(
+            "MERGE_SORTED",
+            capability,
+            "SEQUENCE",
+            "O(N log k)",
+            "O(N)",
+            preconditions=("each value is itself a sorted list",),
+        )
+    )
+    def _merge_sorted(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> list[Any]:
+        return HeapAlgorithms.merge_sorted(context.state.values)
+
+    @operation(describe("PEEK", capability, "HEAP", "O(1)", "O(1)", returns_internal_reference=True))
+    def _heap_peek(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        return HeapAlgorithms.peek(context.state)
+
+    # -- union-find
+    @operation(describe("FIND", capability, "UNION_FIND", "O(log n)", "O(1)"), requires=("element",))
+    def _uf_find(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        return UnionFindAlgorithms.find(context.state, args["element"], compress=False)
+
+    @operation(
+        describe("CONNECTED", capability, "UNION_FIND", "O(log n)", "O(1)"), requires=("left", "right")
+    )
+    def _uf_connected(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
+        return UnionFindAlgorithms.connected(context.state, args["left"], args["right"], compress=False)
+
+    @operation(describe("COMPONENT_COUNT", capability, "UNION_FIND", "O(1)", "O(1)"))
+    def _uf_components(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        count: int = context.state.components
+        return count

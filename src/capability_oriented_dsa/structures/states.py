@@ -23,6 +23,8 @@ class StructureType(str, Enum):
     BST = "BST"
     TRIE = "TRIE"
     GRAPH = "GRAPH"
+    HEAP = "HEAP"
+    UNION_FIND = "UNION_FIND"
 
 
 class CapabilityName(str, Enum):
@@ -33,6 +35,8 @@ class CapabilityName(str, Enum):
     QUERY = "QUERY"
     MUTATION = "MUTATION"
     VALIDATION = "VALIDATION"
+    OPTIMIZATION = "OPTIMIZATION"
+    ENUMERATION = "ENUMERATION"
 
 
 @dataclass(slots=True)
@@ -111,6 +115,27 @@ class GraphState(Generic[T]):
     directed: bool = False
 
 
+@dataclass(slots=True)
+class HeapState(Generic[T]):
+    """Binary heap in array form. ``values[0]`` is the minimum (or maximum if ``max_heap``).
+
+    Order is by the values themselves; to order by a priority, store
+    ``(priority, item)`` tuples.
+    """
+
+    values: list[T] = field(default_factory=list)
+    max_heap: bool = False
+
+
+@dataclass(slots=True)
+class UnionFindState:
+    """Disjoint sets: ``parent`` links each element towards its root; ``size`` is kept for roots."""
+
+    parent: dict[Any, Any] = field(default_factory=dict)
+    size: dict[Any, int] = field(default_factory=dict)
+    components: int = 0
+
+
 #: The state contract each structure type must satisfy at the governed boundary.
 STATE_TYPES: dict[str, type[Any]] = {
     StructureType.SEQUENCE.value: SequenceState,
@@ -121,6 +146,8 @@ STATE_TYPES: dict[str, type[Any]] = {
     StructureType.BST.value: BSTState,
     StructureType.TRIE.value: TrieState,
     StructureType.GRAPH.value: GraphState,
+    StructureType.HEAP.value: HeapState,
+    StructureType.UNION_FIND.value: UnionFindState,
 }
 
 
