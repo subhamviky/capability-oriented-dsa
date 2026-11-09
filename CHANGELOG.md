@@ -26,6 +26,3 @@ Initial release.
 - Optional request identifiers on every governed call: `correlation_id` and `tenant_id` pass through to `metadata["propagation"]`; `idempotency_key` makes a keyed mutation apply once per `(tenant_id, key)` for sequential retries, with a bounded, pluggable, in-memory `IdempotencyStore`.
 - Structured results with `SUCCESS` / `NOT_FOUND` / `FAILURE`, stable error codes, metrics and rollback.
 - Tests run against both editions, including Hypothesis property tests. CI covers Ruff, `mypy --strict`, standalone freshness, Python 3.11 to 3.13 plus Windows/macOS, coverage, a wheel check, and a tag-driven release.
-
-[Unreleased]: https://github.com/subhamviky/capability-oriented-dsa/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/subhamviky/capability-oriented-dsa/releases/tag/v0.1.0
