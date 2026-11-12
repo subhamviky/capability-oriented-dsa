@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "capability-oriented-dsa"
-version = "0.2.0"
+version = "0.2.1"
 description = "Direct DSA kernels over explicit state, with an optional governed capability layer: registry dispatch, central configuration, invariant validation, metrics and structured results."
 readme = "README.md"
 requires-python = ">=3.11"

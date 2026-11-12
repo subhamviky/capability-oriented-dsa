@@ -4,7 +4,15 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: monthly
+    groups:
+      # One PR for the pinned dev tools: their pins sit on adjacent lines of
+      # pyproject.toml, so separate PRs conflict as soon as one is merged.
+      dev-tools:
+        patterns: ["ruff", "mypy", "pytest*", "hypothesis", "build"]

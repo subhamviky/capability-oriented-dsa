@@ -6,6 +6,15 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-12
+
+### Changed
+
+- CI uses Node-24 action versions (`actions/checkout@v6`, `actions/setup-python@v6`, `actions/upload-artifact@v6`).
+- Dependabot groups the pinned dev tools (ruff, mypy, pytest, hypothesis, build) into one pull request, so their adjacent pins no longer conflict, and groups action updates.
+
+## [0.2.0] - 2026-11-10
+
 ### Added
 
 - Two core structures: `HEAP` (`HeapState`; push, pop, peek) and `UNION_FIND` (`UnionFindState`; add, union, find, connected, component count), each with a validator.

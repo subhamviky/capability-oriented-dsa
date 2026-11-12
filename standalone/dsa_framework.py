@@ -28,7 +28,7 @@ from itertools import pairwise, starmap
 from types import MappingProxyType
 from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast, runtime_checkable
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 
 
 # ============================================================================
