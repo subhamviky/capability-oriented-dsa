@@ -215,6 +215,21 @@ class MutationService(BaseDSACapability):
             self._changed(ctx)
         return added
 
+    @operation(_m("ADD_ALL", "UNION_FIND", "O(n)"), requires=("elements",))
+    def _uf_add_all(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        added = UnionFindAlgorithms.add_all(ctx.state, args["elements"])
+        if added:
+            self._changed(ctx, added)
+        return added
+
+    @operation(_m("GROUP_BY_KEYS", "UNION_FIND", "O(n * k)"), requires=("elements", "keys"))
+    def _uf_group_by_keys(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> list[list[Any]]:
+        groups = UnionFindAlgorithms.group_by_keys(
+            ctx.state, args["elements"], args["keys"], args.get("element_id")
+        )
+        self._changed(ctx)
+        return groups
+
     @operation(_m("UNION", "UNION_FIND", "O(log n)"), requires=("left", "right"))
     def _uf_union(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
         merged = UnionFindAlgorithms.union(ctx.state, args["left"], args["right"])

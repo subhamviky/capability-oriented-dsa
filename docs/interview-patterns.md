@@ -170,6 +170,7 @@ but there is no governed operation. Anything not listed is in
 | Number of connected components | union-find | `UNION_FIND / QUERY / COMPONENT_COUNT` | Direct |
 | Redundant connection | union-find | `UNION` returns `False` for the edge that closes a cycle | Direct |
 | Are two items connected | union-find | `UNION_FIND / QUERY / CONNECTED` | Direct |
+| Group records that share any key (accounts merge, duplicates) | union-find with a key index | `UNION_FIND / MUTATION / GROUP_BY_KEYS` | Direct |
 | Number of islands | components of a grid | build `GraphState` or union neighbours, then count | Composed |
 | Word ladder | BFS on an implicit graph | build the graph, `SHORTEST_UNWEIGHTED` | Composed |
 | Minimum spanning tree (Kruskal) | sort edges, union-find | `ORDERING`, then `UNION` per edge | Composed |
@@ -194,6 +195,7 @@ but there is no governed operation. Anything not listed is in
 | Coin change (fewest coins) | unbounded knapsack | `COIN_CHANGE` | Direct |
 | 0/1 knapsack | take or skip per item | `KNAPSACK_01` | Direct |
 | Partition equal subset sum | knapsack with weight = value | `KNAPSACK_01` with half the total as capacity | Composed |
+| Subset adding up to a target (smallest, each item once) | pruned search | `SEQUENCE / OPTIMIZATION / SUBSET_SUM` | Direct |
 | Longest common subsequence | two-sequence table | `LONGEST_COMMON_SUBSEQUENCE` | Direct |
 | Edit distance | two-sequence table | `EDIT_DISTANCE` | Direct |
 
@@ -254,7 +256,7 @@ operation is registered and missing here.
 | `QUEUE / VALIDATION` | `VALIDATE` |
 | `SEQUENCE / ENUMERATION` | `COMBINATIONS`, `COMBINATION_SUM`, `PERMUTATIONS`, `SUBSETS` |
 | `SEQUENCE / MUTATION` | `DELETE`, `INSERT`, `UPDATE` |
-| `SEQUENCE / OPTIMIZATION` | `CAN_JUMP`, `COIN_CHANGE`, `EDIT_DISTANCE`, `HOUSE_ROBBER`, `KNAPSACK_01`, `LONGEST_COMMON_SUBSEQUENCE`, `LONGEST_INCREASING_SUBSEQUENCE`, `MAX_NON_OVERLAPPING`, `MERGE_INTERVALS` |
+| `SEQUENCE / OPTIMIZATION` | `CAN_JUMP`, `COIN_CHANGE`, `EDIT_DISTANCE`, `HOUSE_ROBBER`, `KNAPSACK_01`, `LONGEST_COMMON_SUBSEQUENCE`, `LONGEST_INCREASING_SUBSEQUENCE`, `MAX_NON_OVERLAPPING`, `MERGE_INTERVALS`, `SUBSET_SUM` |
 | `SEQUENCE / ORDERING` | `BUBBLE`, `MERGE`, `QUICK` |
 | `SEQUENCE / QUERY` | `FIRST_UNIQUE`, `FREQUENCY`, `GROUP_ANAGRAMS`, `HAS_DUPLICATE`, `LONGEST_CONSECUTIVE`, `LONGEST_UNIQUE_WINDOW`, `MAXIMUM_SUBARRAY`, `MAX_AREA`, `MERGE_SORTED`, `MIN_SUBARRAY_LENGTH`, `NEXT_GREATER`, `PAIR_SUM_SORTED`, `PREFIX_SUMS`, `READ`, `SLIDING_WINDOW_MAXIMUM`, `SUBARRAY_SUM_COUNT`, `TOP_K`, `TWO_SUM` |
 | `SEQUENCE / SEARCH` | `BINARY`, `FIRST_TRUE`, `LINEAR`, `LOWER_BOUND` |
@@ -269,6 +271,6 @@ operation is registered and missing here.
 | `TRIE / MUTATION` | `DELETE`, `INSERT` |
 | `TRIE / SEARCH` | `CONTAINS`, `PREFIX` |
 | `TRIE / VALIDATION` | `VALIDATE` |
-| `UNION_FIND / MUTATION` | `ADD`, `UNION` |
+| `UNION_FIND / MUTATION` | `ADD`, `ADD_ALL`, `GROUP_BY_KEYS`, `UNION` |
 | `UNION_FIND / QUERY` | `COMPONENT_COUNT`, `CONNECTED`, `FIND` |
 | `UNION_FIND / VALIDATION` | `VALIDATE` |

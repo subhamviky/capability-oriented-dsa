@@ -52,3 +52,31 @@ class UnionFindAlgorithms:
             UnionFindAlgorithms.find(state, left, compress=compress)
             == UnionFindAlgorithms.find(state, right, compress=compress)
         )
+
+    @staticmethod
+    def add_all(state: UnionFindState, elements: Any) -> int:
+        """Add every element as its own set; returns how many were new (v0.3, S-4)."""
+        return sum(1 for e in elements if UnionFindAlgorithms.make_set(state, e))
+
+    @staticmethod
+    def group_by_keys(
+        state: UnionFindState, elements: Any, keys: Any, element_id: Any = None
+    ) -> list[list[Any]]:
+        """Connect elements that share ANY key (keys(e) returns several), in O(n * k) with a
+        key index instead of comparing every pair; return the groups, each in input order,
+        ordered by their first element (v0.3, S-4)."""
+        ident = element_id or (lambda e: e)
+        items = list(elements)
+        first_with: dict[Any, Any] = {}
+        for e in items:
+            eid = ident(e)
+            UnionFindAlgorithms.make_set(state, eid)
+            for key in keys(e):
+                if key in first_with:
+                    UnionFindAlgorithms.union(state, first_with[key], eid)
+                else:
+                    first_with[key] = eid
+        groups: dict[Any, list[Any]] = {}
+        for e in items:
+            groups.setdefault(UnionFindAlgorithms.find(state, ident(e)), []).append(e)
+        return list(groups.values())

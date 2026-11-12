@@ -271,6 +271,22 @@ CASES: list[Case] = [
         lambda d, s: d is True and s.components == 2,
     ),
     ("UNION_FIND", "VALIDATION", "VALIDATE", dsu, {}, lambda d, s: d.valid),
+    (
+        "UNION_FIND",
+        "MUTATION",
+        "ADD_ALL",
+        dsu,
+        {"elements": ["d", "e", "f"]},
+        lambda d, s: d == 2 and s.components == 5,
+    ),
+    (
+        "UNION_FIND",
+        "MUTATION",
+        "GROUP_BY_KEYS",
+        lambda dsa: dsa.UnionFindState(),
+        {"elements": ["ab", "bc", "xy", "cd"], "keys": list},
+        ok([["ab", "bc", "cd"], ["xy"]]),
+    ),
     ("SEQUENCE", "OPTIMIZATION", "HOUSE_ROBBER", lambda dsa: dsa.SequenceState([2, 7, 9, 3, 1]), {}, ok(12)),
     (
         "SEQUENCE",
@@ -295,6 +311,14 @@ CASES: list[Case] = [
         lambda dsa: dsa.SequenceState([(1, 1), (3, 4), (4, 5), (5, 7)]),
         {"capacity": 7},
         ok(9),
+    ),
+    (
+        "SEQUENCE",
+        "OPTIMIZATION",
+        "SUBSET_SUM",
+        lambda dsa: dsa.SequenceState([5, 3, 9, 4, 2]),
+        {"target": 9},
+        ok((2,)),
     ),
     (
         "SEQUENCE",

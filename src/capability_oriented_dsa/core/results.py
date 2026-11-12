@@ -63,6 +63,9 @@ class OperationResult(Generic[T]):
     errors: list[ErrorDetail] = field(default_factory=list)
     metrics: MetricsState = field(default_factory=MetricsState)
     metadata: dict[str, Any] = field(default_factory=dict)
+    complete: bool = True
+    """False when a bound (enumeration_limit, max_nodes, ...) cut the work short: the data is a
+    correct partial answer, not proof that nothing else exists (v0.3, S-2)."""
 
     @property
     def successful(self) -> bool:
@@ -125,6 +128,7 @@ class ResultBuilder:
             "errors": list(context.errors),
             "metrics": context.metrics,
             "metadata": context.metadata,
+            "complete": not (context.metadata.get("truncated") or context.metadata.get("incomplete")),
         }
 
     @staticmethod

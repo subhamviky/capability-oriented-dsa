@@ -6,6 +6,17 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-12
+
+Wave C, design note C-03: what the reconciliation engine needed.
+
+### Added
+- `OperationResult.complete`: `False` when a bound (`enumeration_limit`, `max_nodes`) cut the work short, so a truncated answer cannot pass for a complete one; the status stays `SUCCESS` and `metadata["truncated"]` stays (S-2).
+- `SEQUENCE / OPTIMIZATION / SUBSET_SUM(target, max_nodes=…, scale=…)`: the smallest subset (ties: lowest indices) adding up exactly to the target, each element used at most once; `NOT_FOUND` when none exists; a pruned search instead of enumerating every subset (S-3).
+- `UNION_FIND / MUTATION / ADD_ALL(elements)` and `GROUP_BY_KEYS(elements, keys, element_id=…)`: connect elements that share any key in O(n · k) with a key index, and return the groups (S-4). It is a MUTATION (it connects elements in the state you pass), not a QUERY as the design note first said.
+- Decimal values with a declared `scale` for `SUBSET_SUM` and `KNAPSACK_01`; more fraction digits than the scale is refused, never rounded (S-5).
+- `tests/test_v03.py`: property tests against brute force and pairwise unions.
+
 ## [0.2.1] - 2026-11-12
 
 ### Changed

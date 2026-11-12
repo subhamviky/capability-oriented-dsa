@@ -7,6 +7,7 @@ table would exceed it, so a caller cannot ask for an unbounded allocation.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from decimal import Decimal
 from typing import Any
 
 from ..core.errors import InvalidInputError
@@ -95,3 +96,70 @@ class DynamicProgrammingAlgorithms:
                 )
             previous = current
         return previous[-1]
+
+
+def scaled_integers(values: Sequence[Any], scale: int | None) -> list[int]:
+    """Integers from ints, or from Decimals with a declared scale (v0.3, S-5). A value with
+    more fraction digits than the scale is refused, never rounded."""
+    if scale is None:
+        if any(isinstance(v, Decimal) and v != v.to_integral_value() for v in values):
+            raise InvalidInputError("Decimal values need a scale (for example scale=2 for money)")
+        return [int(v) for v in values]
+    if scale < 0:
+        raise InvalidInputError("scale must be >= 0")
+    factor = Decimal(10) ** scale
+    out = []
+    for v in values:
+        d = Decimal(str(v)) * factor
+        if d != d.to_integral_value():
+            raise InvalidInputError(f"{v} has more than {scale} fraction digits")
+        out.append(int(d))
+    return out
+
+
+class SubsetSum:
+    """Smallest subset (fewest elements; ties: lowest indices) of non-negative integers that
+    adds up exactly to a target, each element used at most once (v0.3, S-3). Iterative
+    deepening on the subset size with sum bounds; `max_nodes` caps the states visited."""
+
+    def __init__(self, values: Sequence[int], target: int, max_nodes: int = -1) -> None:
+        if target < 0 or any(v < 0 for v in values):
+            raise InvalidInputError("values and target must be non-negative")
+        self.values, self.target, self.max_nodes = list(values), target, max_nodes
+        self.visited, self.exhausted = 0, False
+        n = len(self.values)
+        # for each start position: the remaining values sorted, for the k-largest / k-smallest bounds
+        self._sorted = [sorted(self.values[i:]) for i in range(n + 1)]
+
+    def _bounds(self, start: int, k: int) -> tuple[int, int]:
+        rest = self._sorted[start]
+        return sum(rest[:k]), sum(rest[len(rest) - k :]) if k else 0
+
+    def solve(self) -> tuple[int, ...] | None:
+        if self.target == 0:
+            return ()
+        for size in range(1, len(self.values) + 1):
+            found = self._search(0, size, 0, [])
+            if found is not None or self.exhausted:
+                return found
+        return None
+
+    def _search(self, start: int, k: int, total: int, chosen: list[int]) -> tuple[int, ...] | None:
+        if k == 0:
+            return tuple(chosen) if total == self.target else None
+        if len(self.values) - start < k:
+            return None
+        low, high = self._bounds(start, k)
+        if total + low > self.target or total + high < self.target:
+            return None
+        for i in range(start, len(self.values) - k + 1):
+            self.visited += 1
+            if 0 <= self.max_nodes < self.visited:
+                self.exhausted = True
+                return None
+            chosen.append(i)
+            found = self._search(i + 1, k - 1, total + self.values[i], chosen)
+            chosen.pop()
+            if found is not None or self.exhausted:
+                return found
+        return None

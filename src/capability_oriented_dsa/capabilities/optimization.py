@@ -8,9 +8,10 @@ locally best choice (greedy), and each descriptor says which.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from decimal import Decimal
 from typing import Any
 
-from ..algorithms.dynamic import DynamicProgrammingAlgorithms
+from ..algorithms.dynamic import DynamicProgrammingAlgorithms, SubsetSum, scaled_integers
 from ..algorithms.greedy import GreedyAlgorithms
 from ..core.metadata import describe
 from ..core.results import DSAExecutionContext
@@ -73,10 +74,51 @@ class OptimizationService(BaseDSACapability):
         ),
         requires=("capacity",),
     )
-    def _knapsack(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
-        return DynamicProgrammingAlgorithms.knapsack_01(
-            context.state.values, args["capacity"], max_cells=self._cells(context, args)
+    def _knapsack(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        scale = args.get("scale")
+        if scale is None:
+            return DynamicProgrammingAlgorithms.knapsack_01(
+                context.state.values, args["capacity"], max_cells=self._cells(context, args)
+            )
+        # v0.3 (S-5): Decimal weights, values and capacity with a declared scale
+        weights = scaled_integers([w for w, _ in context.state.values], scale)
+        values = scaled_integers([v for _, v in context.state.values], scale)
+        (capacity,) = scaled_integers([args["capacity"]], scale)
+        best = DynamicProgrammingAlgorithms.knapsack_01(
+            list(zip(weights, values, strict=True)), capacity, max_cells=self._cells(context, args)
         )
+        return Decimal(best).scaleb(-scale)
+
+    @operation(
+        describe(
+            "SUBSET_SUM",
+            capability,
+            "SEQUENCE",
+            "O(2^n) worst case, pruned by sum bounds",
+            "O(n^2)",
+            preconditions=("values and target non-negative; Decimal values need `scale`",),
+            postconditions=(
+                "indices of the smallest subset (ties: lowest indices) adding up exactly to `target`, "
+                "each element used at most once; NOT_FOUND when none exists; complete=False when "
+                "`max_nodes` stopped the search first",
+            ),
+        ),
+        requires=("target",),
+    )
+    def _subset_sum(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> tuple[int, ...] | None:
+        scale = args.get("scale")
+        values = scaled_integers(context.state.values, scale)
+        (target,) = scaled_integers([args["target"]], scale)
+        search = SubsetSum(values, target, int(args.get("max_nodes", -1)))
+        found = search.solve()
+        context.metrics.nodes_visited += search.visited
+        if search.exhausted:
+            context.metadata["incomplete"] = True
+            context.warn(
+                "INCOMPLETE", f"stopped after max_nodes={args.get('max_nodes')} states; a subset may exist"
+            )
+        context.found = found is not None
+        return found
 
     @operation(
         describe(

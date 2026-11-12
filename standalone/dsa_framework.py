@@ -23,12 +23,13 @@ import uuid
 from collections import Counter, OrderedDict, deque
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 from enum import Enum
 from itertools import pairwise, starmap
 from types import MappingProxyType
 from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast, runtime_checkable
 
-__version__ = '0.2.1'
+__version__ = '0.3.0'
 
 
 # ============================================================================
@@ -459,6 +460,9 @@ class OperationResult(Generic[T]):
     errors: list[ErrorDetail] = field(default_factory=list)
     metrics: MetricsState = field(default_factory=MetricsState)
     metadata: dict[str, Any] = field(default_factory=dict)
+    complete: bool = True
+    """False when a bound (enumeration_limit, max_nodes, ...) cut the work short: the data is a
+    correct partial answer, not proof that nothing else exists (v0.3, S-2)."""
 
     @property
     def successful(self) -> bool:
@@ -521,6 +525,7 @@ class ResultBuilder:
             "errors": list(context.errors),
             "metrics": context.metrics,
             "metadata": context.metadata,
+            "complete": not (context.metadata.get("truncated") or context.metadata.get("incomplete")),
         }
 
     @staticmethod
@@ -2728,6 +2733,34 @@ class UnionFindAlgorithms:
             == UnionFindAlgorithms.find(state, right, compress=compress)
         )
 
+    @staticmethod
+    def add_all(state: UnionFindState, elements: Any) -> int:
+        """Add every element as its own set; returns how many were new (v0.3, S-4)."""
+        return sum(1 for e in elements if UnionFindAlgorithms.make_set(state, e))
+
+    @staticmethod
+    def group_by_keys(
+        state: UnionFindState, elements: Any, keys: Any, element_id: Any = None
+    ) -> list[list[Any]]:
+        """Connect elements that share ANY key (keys(e) returns several), in O(n * k) with a
+        key index instead of comparing every pair; return the groups, each in input order,
+        ordered by their first element (v0.3, S-4)."""
+        ident = element_id or (lambda e: e)
+        items = list(elements)
+        first_with: dict[Any, Any] = {}
+        for e in items:
+            eid = ident(e)
+            UnionFindAlgorithms.make_set(state, eid)
+            for key in keys(e):
+                if key in first_with:
+                    UnionFindAlgorithms.union(state, first_with[key], eid)
+                else:
+                    first_with[key] = eid
+        groups: dict[Any, list[Any]] = {}
+        for e in items:
+            groups.setdefault(UnionFindAlgorithms.find(state, ident(e)), []).append(e)
+        return list(groups.values())
+
 
 # ============================================================================
 # algorithms/hashing.py
@@ -2934,6 +2967,73 @@ class DynamicProgrammingAlgorithms:
                 )
             previous = current
         return previous[-1]
+
+
+def scaled_integers(values: Sequence[Any], scale: int | None) -> list[int]:
+    """Integers from ints, or from Decimals with a declared scale (v0.3, S-5). A value with
+    more fraction digits than the scale is refused, never rounded."""
+    if scale is None:
+        if any(isinstance(v, Decimal) and v != v.to_integral_value() for v in values):
+            raise InvalidInputError("Decimal values need a scale (for example scale=2 for money)")
+        return [int(v) for v in values]
+    if scale < 0:
+        raise InvalidInputError("scale must be >= 0")
+    factor = Decimal(10) ** scale
+    out = []
+    for v in values:
+        d = Decimal(str(v)) * factor
+        if d != d.to_integral_value():
+            raise InvalidInputError(f"{v} has more than {scale} fraction digits")
+        out.append(int(d))
+    return out
+
+
+class SubsetSum:
+    """Smallest subset (fewest elements; ties: lowest indices) of non-negative integers that
+    adds up exactly to a target, each element used at most once (v0.3, S-3). Iterative
+    deepening on the subset size with sum bounds; `max_nodes` caps the states visited."""
+
+    def __init__(self, values: Sequence[int], target: int, max_nodes: int = -1) -> None:
+        if target < 0 or any(v < 0 for v in values):
+            raise InvalidInputError("values and target must be non-negative")
+        self.values, self.target, self.max_nodes = list(values), target, max_nodes
+        self.visited, self.exhausted = 0, False
+        n = len(self.values)
+        # for each start position: the remaining values sorted, for the k-largest / k-smallest bounds
+        self._sorted = [sorted(self.values[i:]) for i in range(n + 1)]
+
+    def _bounds(self, start: int, k: int) -> tuple[int, int]:
+        rest = self._sorted[start]
+        return sum(rest[:k]), sum(rest[len(rest) - k :]) if k else 0
+
+    def solve(self) -> tuple[int, ...] | None:
+        if self.target == 0:
+            return ()
+        for size in range(1, len(self.values) + 1):
+            found = self._search(0, size, 0, [])
+            if found is not None or self.exhausted:
+                return found
+        return None
+
+    def _search(self, start: int, k: int, total: int, chosen: list[int]) -> tuple[int, ...] | None:
+        if k == 0:
+            return tuple(chosen) if total == self.target else None
+        if len(self.values) - start < k:
+            return None
+        low, high = self._bounds(start, k)
+        if total + low > self.target or total + high < self.target:
+            return None
+        for i in range(start, len(self.values) - k + 1):
+            self.visited += 1
+            if 0 <= self.max_nodes < self.visited:
+                self.exhausted = True
+                return None
+            chosen.append(i)
+            found = self._search(i + 1, k - 1, total + self.values[i], chosen)
+            chosen.pop()
+            if found is not None or self.exhausted:
+                return found
+        return None
 
 
 # ============================================================================
@@ -4139,6 +4239,21 @@ class MutationService(BaseDSACapability):
             self._changed(ctx)
         return added
 
+    @operation(_m("ADD_ALL", "UNION_FIND", "O(n)"), requires=("elements",))
+    def _uf_add_all(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> int:
+        added = UnionFindAlgorithms.add_all(ctx.state, args["elements"])
+        if added:
+            self._changed(ctx, added)
+        return added
+
+    @operation(_m("GROUP_BY_KEYS", "UNION_FIND", "O(n * k)"), requires=("elements", "keys"))
+    def _uf_group_by_keys(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> list[list[Any]]:
+        groups = UnionFindAlgorithms.group_by_keys(
+            ctx.state, args["elements"], args["keys"], args.get("element_id")
+        )
+        self._changed(ctx)
+        return groups
+
     @operation(_m("UNION", "UNION_FIND", "O(log n)"), requires=("left", "right"))
     def _uf_union(self, ctx: DSAExecutionContext, args: Mapping[str, Any]) -> bool:
         merged = UnionFindAlgorithms.union(ctx.state, args["left"], args["right"])
@@ -4223,10 +4338,51 @@ class OptimizationService(BaseDSACapability):
         ),
         requires=("capacity",),
     )
-    def _knapsack(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> int:
-        return DynamicProgrammingAlgorithms.knapsack_01(
-            context.state.values, args["capacity"], max_cells=self._cells(context, args)
+    def _knapsack(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> Any:
+        scale = args.get("scale")
+        if scale is None:
+            return DynamicProgrammingAlgorithms.knapsack_01(
+                context.state.values, args["capacity"], max_cells=self._cells(context, args)
+            )
+        # v0.3 (S-5): Decimal weights, values and capacity with a declared scale
+        weights = scaled_integers([w for w, _ in context.state.values], scale)
+        values = scaled_integers([v for _, v in context.state.values], scale)
+        (capacity,) = scaled_integers([args["capacity"]], scale)
+        best = DynamicProgrammingAlgorithms.knapsack_01(
+            list(zip(weights, values, strict=True)), capacity, max_cells=self._cells(context, args)
         )
+        return Decimal(best).scaleb(-scale)
+
+    @operation(
+        describe(
+            "SUBSET_SUM",
+            capability,
+            "SEQUENCE",
+            "O(2^n) worst case, pruned by sum bounds",
+            "O(n^2)",
+            preconditions=("values and target non-negative; Decimal values need `scale`",),
+            postconditions=(
+                "indices of the smallest subset (ties: lowest indices) adding up exactly to `target`, "
+                "each element used at most once; NOT_FOUND when none exists; complete=False when "
+                "`max_nodes` stopped the search first",
+            ),
+        ),
+        requires=("target",),
+    )
+    def _subset_sum(self, context: DSAExecutionContext, args: Mapping[str, Any]) -> tuple[int, ...] | None:
+        scale = args.get("scale")
+        values = scaled_integers(context.state.values, scale)
+        (target,) = scaled_integers([args["target"]], scale)
+        search = SubsetSum(values, target, int(args.get("max_nodes", -1)))
+        found = search.solve()
+        context.metrics.nodes_visited += search.visited
+        if search.exhausted:
+            context.metadata["incomplete"] = True
+            context.warn(
+                "INCOMPLETE", f"stopped after max_nodes={args.get('max_nodes')} states; a subset may exist"
+            )
+        context.found = found is not None
+        return found
 
     @operation(
         describe(
