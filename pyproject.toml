@@ -32,7 +32,7 @@ dev = [
   "pytest>=8",
   "pytest-cov>=5",
   "hypothesis>=6.100",
-  "ruff==0.17.3",          # pinned: formatter output must match CI; Dependabot bumps it
+  "ruff==0.17.4",          # pinned: formatter output must match CI; Dependabot bumps it
   "mypy==2.4.1",
   "build>=1.2",
 ]
