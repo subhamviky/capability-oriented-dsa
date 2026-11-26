@@ -203,7 +203,7 @@ a domain small enough to inspect end to end. There is no code dependency
 between the two.
 
 Used in the completed Order-to-Cash projects (pinned to a release tag): the
-[reconciliation engine](https://github.com/subhamviky/aws-reconciliation-engine)
+[reconciliation engine](https://github.com/subhamviky/payment-reconciliation-engine)
 matches bank payments with `KNAPSACK_01`, bounded `SUBSETS`, `LOWER_BOUND` and
 `UNION_FIND`; the [O2C assistant](https://github.com/subhamviky/order-to-cash-agentic-ai)
 re-ranks retrieval results with `TOP_K`; the settlement platform's audit service
